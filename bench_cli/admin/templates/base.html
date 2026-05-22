@@ -10,11 +10,10 @@
   <div class="layout">
     <header>
       <a class="header-brand" href="/">
-        <span class="brand-icon">b2</span>
-        bench2
+        <span class="brand-icon">F</span>
+        Bench
       </a>
       <nav>
-        <a href="/" class="{{ 'active' if request.path == '/' else '' }}">Dashboard</a>
         <a href="/apps" class="{{ 'active' if request.path.startswith('/apps') else '' }}">Apps</a>
         <a href="/sites" class="{{ 'active' if request.path.startswith('/sites') else '' }}">Sites</a>
         <a href="/processes" class="{{ 'active' if request.path.startswith('/processes') else '' }}">Processes</a>

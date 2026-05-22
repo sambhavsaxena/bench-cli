@@ -9,6 +9,7 @@ class SiteConfig:
     admin_password: str = "admin"
     domains: List[str] = field(default_factory=list)
     ssl: bool = False
+    default: bool = False
 
     @property
     def all_domains(self) -> List[str]:

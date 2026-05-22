@@ -33,7 +33,7 @@ def main() -> None:
                 os.kill(os.getpid(), signal.SIGTERM)
 
     threading.Thread(target=_watchdog, daemon=True).start()
-    app.run(host="127.0.0.1", port=args.port, threaded=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=args.port, threaded=True, use_reloader=False)
 
 
 if __name__ == "__main__":

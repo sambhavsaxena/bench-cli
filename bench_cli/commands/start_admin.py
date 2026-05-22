@@ -31,7 +31,7 @@ class StartAdminCommand:
         proc = self._spawn()
         self._write_state(proc.pid)
         timeout_minutes = self.bench.config.admin.timeout // 60
-        click.echo(f"Admin UI started at http://127.0.0.1:{self.port}/")
+        click.echo(f"Admin UI started at http://0.0.0.0:{self.port}/")
         click.echo(f"Will auto-stop after {timeout_minutes} minutes of inactivity.")
 
     def _check_not_already_running(self) -> None:
@@ -46,14 +46,14 @@ class StartAdminCommand:
             self._port_file.unlink(missing_ok=True)
             return
         saved_port = self._port_file.read_text().strip() if self._port_file.exists() else str(self.port)
-        raise BenchError(f"Admin is already running at http://127.0.0.1:{saved_port}/")
+        raise BenchError(f"Admin is already running on port {saved_port}.")
 
     def _spawn(self) -> subprocess.Popen:
         return subprocess.Popen(
             [
                 sys.executable,
                 "-m",
-                "bench_bench_cli.admin.server",
+                "bench_cli.admin.server",
                 "--bench-root",
                 str(self.bench.path),
                 "--port",

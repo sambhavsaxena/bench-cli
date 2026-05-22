@@ -8,6 +8,6 @@ Guidelines for writing good code for a developer
 6. Avoid abbreviations.
 7. Use standard API as much as possible.
 8. Reuse. Write as little code as possible.
-9. Use Frappe UI, espresso for UI styling.
+9. Use Frappe UI, espresso design system for UI styling.
 10. Always write tests, and make sure they work.
 11. Build the minimum working app, then iterate towards your goals.

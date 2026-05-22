@@ -116,7 +116,7 @@ class BenchConfig:
     def _parse_admin(data: dict) -> AdminConfig:
         return AdminConfig(
             port=data.get("port", 8002),
-            timeout=data.get("timeout", 900),
+            timeout=data.get("timeout", 180),
         )
 
     def validate(self) -> None:

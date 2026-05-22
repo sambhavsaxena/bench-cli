@@ -69,10 +69,14 @@ class InitCommand:
 
     def _install_system_packages(self) -> None:
         from bench_cli.managers.mariadb_manager import MariaDBManager
+        from bench_cli.platform import get_package_manager, is_linux
         mariadb_manager = MariaDBManager(self.bench.config.mariadb)
         mariadb_manager.install()
         mariadb_manager.start()
         RedisManager(self.bench.config.redis, self.bench).install()
+        if is_linux():
+            pkg = get_package_manager()
+            pkg.install("build-essential", "pkg-config", "libmariadb-dev", "git")
         PythonEnvManager(self.bench).ensure_python()
 
     def _create_sites(self) -> None:

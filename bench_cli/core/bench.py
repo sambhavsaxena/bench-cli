@@ -77,5 +77,8 @@ class Bench:
             "socketio_port": self.config.socketio_port,
             "webserver_port": self.config.http_port,
         }
+        default = next((s for s in self.config.sites if s.default), None)
+        if default:
+            config["default_site"] = default.name
         config_path = self.sites_path / "common_site_config.json"
         config_path.write_text(json.dumps(config, indent=2) + "\n")

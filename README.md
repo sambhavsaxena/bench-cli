@@ -15,12 +15,17 @@ A command-line tool for setting up and managing [Frappe](https://frappeframework
 ## Installation
 
 ```bash
-git clone https://github.com/frappe/bench-cli
-cd bench-cli
-pip install .
+curl -fsSL https://raw.githubusercontent.com/frappe/bench-cli/main/install.sh | bash
 ```
 
-This installs the `bench` command globally. `bench init` will then install MariaDB, Redis, Node.js, and any other system dependencies itself.
+Or manually:
+
+```bash
+git clone https://github.com/frappe/bench-cli
+uv tool install ./bench-cli
+```
+
+`bench init` will then install MariaDB, Redis, Node.js, and any other system dependencies itself.
 
 ---
 
@@ -88,6 +93,7 @@ apps:
 
 sites:
   - name: site1.localhost
+    default: true        # serve this site when no Host header matches
     admin_password: "admin"
     apps:
       - frappe
@@ -236,6 +242,7 @@ my-bench/
 
 ## Further reading
 
+- [taste.md](taste.md) - coding guidelines
 - [docs/config.md](docs/config.md) — complete `bench.yml` field reference
 - [docs/commands.md](docs/commands.md) — what each command does, step by step
 - [docs/production.md](docs/production.md) — nginx, Let's Encrypt, and DNS multitenancy

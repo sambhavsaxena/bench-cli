@@ -6,7 +6,7 @@ from bench_cli.exceptions import BenchError
 
 _BENCH_YML_TEMPLATE = """\
 bench:
-  name: my-bench
+  name: frappe-bench
   python: "3.14"
   process_manager: honcho
 
@@ -17,6 +17,7 @@ apps:
 
 sites:
   - name: site1.localhost
+    default: true        # serve this site when no Host header matches
     apps:
       - frappe
 
@@ -35,6 +36,10 @@ workers:
   default: 2
   short: 1
   long: 1
+
+admin:
+  port: 8002
+  timeout: 180          # seconds of inactivity before the admin UI auto-stops
 """
 
 
