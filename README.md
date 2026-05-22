@@ -15,10 +15,12 @@ A command-line tool for setting up and managing [Frappe](https://frappeframework
 ## Installation
 
 ```bash
-pip install frappe-cli
+git clone https://github.com/frappe/bench-cli
+cd bench-cli
+pip install .
 ```
 
-`bench init` will install MariaDB, Redis, Node.js, and any other system dependencies itself.
+This installs the `bench` command globally. `bench init` will then install MariaDB, Redis, Node.js, and any other system dependencies itself.
 
 ---
 
