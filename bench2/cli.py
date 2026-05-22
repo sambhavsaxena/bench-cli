@@ -80,6 +80,20 @@ def stop(context: click.Context) -> None:
         sys.exit(1)
 
 
+@cli.command("kill-orphaned")
+@click.pass_context
+def kill_orphaned(context: click.Context) -> None:
+    """Kill orphaned bench processes left behind by a crashed or force-killed bench."""
+    try:
+        from bench2.commands.kill_orphaned import KillOrphanedCommand
+        bench = _load_bench()
+        yes = context.obj.get("yes", False)
+        KillOrphanedCommand(bench, skip_confirm=yes).run()
+    except Bench2Error as error:
+        click.echo(str(error), err=True)
+        sys.exit(1)
+
+
 @cli.command("start-admin")
 @click.option("--port", default=8002, type=int, help="Port for the admin interface.")
 @click.pass_context
