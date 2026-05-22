@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>Sites ({{ sites | length }})</h2>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Exists</th><th>DB Name</th><th>Installed Apps</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for site in sites %}
+      <tr>
+        <td>{{ site.name }}</td>
+        <td>{% if site.exists %}✓{% else %}✗{% endif %}</td>
+        <td>{{ site.db_name or '—' }}</td>
+        <td>{{ site.installed_apps | join(', ') or '—' }}</td>
+        <td><a href="/sites/{{ site.name }}">[▶]</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No sites configured.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

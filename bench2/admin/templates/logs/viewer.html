@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<p>
+  <a href="/logs">Logs</a> / <strong>{{ filename }}</strong>
+  &nbsp;&nbsp;
+  {% if stream_mode %}
+    <span class="status-running">● streaming</span>
+    &nbsp;
+    <a href="/logs/{{ filename }}">Stop</a>
+  {% else %}
+    Lines:
+    <select onchange="window.location='/logs/{{ filename }}?lines='+this.value">
+      {% for n in [200, 500, 1000, 5000] %}
+      <option value="{{ n }}" {% if n == lines_count %}selected{% endif %}>{{ n }}</option>
+      {% endfor %}
+    </select>
+    &nbsp;
+    <a href="/logs/{{ filename }}?stream=1">Live tail ↺</a>
+  {% endif %}
+</p>
+
+<pre id="output">{% if not stream_mode %}{% for line in lines %}{{ line }}
+{% endfor %}{% endif %}</pre>
+
+{% if stream_mode %}
+<script>
+  const pre = document.getElementById('output');
+  const es = new EventSource('/logs/{{ filename }}/stream');
+  es.onmessage = function(event) {
+    pre.textContent += event.data + '\n';
+    window.scrollTo(0, document.body.scrollHeight);
+  };
+  es.onerror = function() {
+    pre.textContent += '\n[stream ended]\n';
+    es.close();
+  };
+</script>
+{% endif %}
+
+{% endblock %}

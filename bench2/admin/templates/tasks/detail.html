@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<p>
+  <a href="/tasks">← Tasks</a> /
+  {% if task.args %}
+    {{ task.command }} — {{ task.args.values() | join(', ') }}
+  {% else %}
+    {{ task.command }}
+  {% endif %}
+</p>
+
+<div class="card" id="task-header">
+  <strong>Task</strong>
+  <table>
+    <tr><th>Command</th><td>{{ task.command }}</td></tr>
+    {% for key, value in task.args.items() %}
+    <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
+    {% endfor %}
+    <tr>
+      <th>Status</th>
+      <td>
+        <span id="status-badge" class="status-{{ task.status }}">
+          {% if task.status == 'success' %}✓{% elif task.status == 'failed' %}✗{% elif task.status == 'running' %}●{% else %}—{% endif %}
+          {{ task.status }}
+        </span>
+        {% if task.status == 'running' %}
+        &nbsp;
+        <form action="/tasks/{{ task.task_id }}/kill" method="post" id="kill-form" style="display:inline">
+          <button type="submit">[ Kill ]</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    <tr><th>Started</th><td>{{ task.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+    <tr><th>Finished</th><td id="finished-at">{{ task.finished_at.strftime('%Y-%m-%d %H:%M:%S') if task.finished_at else '—' }}</td></tr>
+    <tr><th>Exit code</th><td id="exit-code">{{ task.exit_code if task.exit_code is not none else '—' }}</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <strong>Output</strong>
+  <pre id="output">{% for line in output %}{{ line }}
+{% endfor %}</pre>
+</div>
+
+{% if task.status == 'running' %}
+<script>
+  const pre = document.getElementById('output');
+  const statusBadge = document.getElementById('status-badge');
+  const killForm = document.getElementById('kill-form');
+  const es = new EventSource('/tasks/{{ task.task_id }}/stream');
+
+  es.onmessage = function(event) {
+    pre.textContent += event.data + '\n';
+    window.scrollTo(0, document.body.scrollHeight);
+  };
+
+  es.addEventListener('done', function(event) {
+    es.close();
+    const exitCode = parseInt(event.data);
+    const newStatus = exitCode === 0 ? 'success' : 'failed';
+    const icon = exitCode === 0 ? '✓' : '✗';
+    statusBadge.className = 'status-' + newStatus;
+    statusBadge.textContent = icon + ' ' + newStatus;
+    document.getElementById('exit-code').textContent = exitCode;
+    if (killForm) killForm.style.display = 'none';
+  });
+
+  es.onerror = function() {
+    es.close();
+  };
+</script>
+{% endif %}
+
+{% endblock %}

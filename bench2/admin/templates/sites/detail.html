@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<p><a href="/sites">← Sites</a> / {{ site.name }}</p>
+
+<div class="card">
+  <strong>Overview</strong>
+  <table>
+    <tr><th>Name</th><td>{{ site.name }}</td></tr>
+    <tr><th>DB</th><td>{{ site.db_name or '—' }} @ {{ site.db_host or 'localhost' }}</td></tr>
+    <tr><th>Exists</th><td>{% if site.exists %}✓{% else %}✗{% endif %}</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <strong>Installed apps</strong>
+  <ul>
+    {% for app in site.installed_apps %}
+    <li>{{ app }}</li>
+    {% else %}
+    <li>None</li>
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="card">
+  <strong>Actions</strong>
+  <form action="/tasks/run" method="post">
+    <input type="hidden" name="command" value="migrate">
+    <input type="hidden" name="site" value="{{ site.name }}">
+    <button type="submit">Run migrate</button>
+  </form>
+  &nbsp;
+  <form action="/tasks/run" method="post">
+    <input type="hidden" name="command" value="clear-cache">
+    <input type="hidden" name="site" value="{{ site.name }}">
+    <button type="submit">Clear cache</button>
+  </form>
+  <br><br>
+  <form action="/tasks/run" method="post">
+    Install app on this site:<br>
+    <input type="hidden" name="command" value="install-app">
+    <input type="hidden" name="site" value="{{ site.name }}">
+    App name: <input type="text" name="app" placeholder="app-name">
+    <button type="submit">Install</button>
+  </form>
+</div>
+
+<div class="card">
+  <strong>site_config.json</strong>
+  <pre>{{ site_config_json }}</pre>
+</div>
+
+{% endblock %}

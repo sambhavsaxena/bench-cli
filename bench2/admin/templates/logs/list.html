@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>Logs</h2>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>File</th><th>Process</th><th>Size</th><th>Last modified</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for log in log_files %}
+      <tr>
+        <td>{{ log.filename }}</td>
+        <td>{{ log.process_name }}</td>
+        <td>{{ (log.size_bytes / 1024) | round(1) }} KB</td>
+        <td>{{ log.last_modified.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td><a href="/logs/{{ log.filename }}">[▶]</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No log files found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

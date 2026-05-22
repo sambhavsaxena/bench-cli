@@ -23,12 +23,12 @@ htmlcov/
 *.log
 
 # bench runtime directories (created by bench init / bench run)
-apps/
-sites/
-logs/
-config/
-pids/
-tasks/
+/apps/
+/sites/
+/logs/
+/config/
+/pids/
+/tasks/
 
 # macOS
 .DS_Store

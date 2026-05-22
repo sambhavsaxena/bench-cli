@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>Tasks</h2>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Command</th><th>Status</th><th>Started</th><th>Duration</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for task in tasks %}
+      {% set delta = (now - task.started_at.replace(tzinfo=now.tzinfo if task.started_at.tzinfo is none else task.started_at.tzinfo)) %}
+      {% set total_seconds = delta.total_seconds() | int %}
+      {% if total_seconds < 60 %}
+        {% set relative = 'just now' %}
+      {% elif total_seconds < 3600 %}
+        {% set relative = (total_seconds // 60) ~ ' minutes ago' %}
+      {% else %}
+        {% set relative = (total_seconds // 3600) ~ ' hours ago' %}
+      {% endif %}
+      {% if task.duration_seconds is not none %}
+        {% set dur_min = (task.duration_seconds // 60) | int %}
+        {% set dur_sec = (task.duration_seconds % 60) | int %}
+        {% set duration_str = dur_min ~ 'm ' ~ dur_sec ~ 's' %}
+      {% else %}
+        {% set duration_str = '—' %}
+      {% endif %}
+      <tr>
+        <td>
+          {% if task.args %}
+            {{ task.command }} — {{ task.args.values() | join(', ') }}
+          {% else %}
+            {{ task.command }}
+          {% endif %}
+        </td>
+        <td class="status-{{ task.status }}">
+          {% if task.status == 'success' %}✓{% elif task.status == 'failed' %}✗{% elif task.status == 'running' %}●{% else %}—{% endif %}
+          {{ task.status }}
+        </td>
+        <td>{{ relative }}</td>
+        <td>{{ duration_str }}</td>
+        <td>
+          <a href="/tasks/{{ task.task_id }}">View</a>
+          {% if task.status == 'running' %}
+          &nbsp;
+          <form action="/tasks/{{ task.task_id }}/kill" method="post" style="display:inline">
+            <button type="submit">[✕] Kill</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No tasks found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
