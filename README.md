@@ -36,11 +36,13 @@ The goal is a bench you can fully understand by reading the source, debug withou
 curl -fsSL https://raw.githubusercontent.com/frappe/bench-cli/main/install.sh | bash
 ```
 
+This clones `bench-cli` to `~/bench-cli` and installs the `bench` command via [uv](https://github.com/astral-sh/uv) (auto-installed if absent). All benches are created inside `~/bench-cli/benches/`.
+
 Or manually:
 
 ```bash
-git clone https://github.com/frappe/bench-cli
-uv tool install ./bench-cli
+git clone https://github.com/frappe/bench-cli ~/bench-cli
+uv tool install ~/bench-cli
 ```
 
 `bench init` will then install MariaDB, Redis, Node.js, and any other system dependencies itself.
@@ -49,15 +51,15 @@ uv tool install ./bench-cli
 
 ## Quick start
 
-**1. Create a bench and scaffold a config:**
+**1. Create a bench:**
 
 ```bash
 bench new my-bench
 ```
 
-This creates `benches/my-bench/bench.toml`. Open it and fill in your database credentials and desired Python version.
+This creates `~/bench-cli/benches/my-bench/bench.toml`. Open it and set your MariaDB root password and desired Python version.
 
-**2. Run the setup:**
+**2. Run setup:**
 
 ```bash
 bench init
@@ -66,8 +68,7 @@ bench init
 This will:
 - Install MariaDB, Redis, Node.js via `apt` (or `brew` on macOS)
 - Create a Python virtualenv at `env/` using `uv`
-- Clone the framework app (frappe) and install it with `uv pip install -e`
-- Build JavaScript and CSS assets
+- Clone the Frappe framework app and install it with `uv pip install -e`
 - Generate a `Procfile` for running all processes
 
 **3. Get additional apps (optional):**
@@ -92,7 +93,7 @@ All processes (web, workers, Redis) start in the foreground. Press `Ctrl-C` to s
 
 **6. Open the app:**
 
-Visit `http://site1.localhost:8000` (or whatever port you configured).
+Visit `http://site1.localhost:8000`.
 
 ---
 
