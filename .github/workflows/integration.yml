@@ -38,12 +38,18 @@ jobs:
       - name: Create bench directory
         run: |
           mkdir -p /tmp/ci-bench
-          cp tests/fixtures/ci_bench.yml /tmp/ci-bench/bench.yml
+          cp tests/fixtures/ci_bench.toml /tmp/ci-bench/bench.toml
 
       - name: bench init
         run: bench init
         working-directory: /tmp/ci-bench
         timeout-minutes: 45
+
+      - name: Create sites
+        run: |
+          bench new-site site1.localhost --admin-password admin
+          bench new-site site2.localhost --admin-password admin
+        working-directory: /tmp/ci-bench
 
       - name: Verify sites exist
         run: |
