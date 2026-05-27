@@ -26,17 +26,21 @@ class NginxManager:
 
     def generate_config(self, ssl_ready: bool = False) -> None:
         nginx_dir = self.bench.config_path / "nginx"
-        nginx_dir.mkdir(parents=True, exist_ok=True)
+        sites_dir = nginx_dir / "sites"
+        sites_dir.mkdir(parents=True, exist_ok=True)
         for site in self.bench.sites():
             site_ssl_ready = ssl_ready and self.cert_exists(site.config)
             conf_text = self._generate_site_config(site.config, site_ssl_ready)
-            conf_path = nginx_dir / f"{site.config.name}.conf"
-            conf_path.write_text(conf_text)
+            (sites_dir / f"{site.config.name}.conf").write_text(conf_text)
         self._write_include_conf(nginx_dir)
 
     def _write_include_conf(self, nginx_dir: Path) -> None:
+        bench_name = self.bench.config.name
         include_path = nginx_dir / "include.conf"
-        include_path.write_text(f"include {nginx_dir}/*.conf;\n")
+        include_path.write_text(
+            self._render_upstream_block(bench_name)
+            + f"include {nginx_dir}/sites/*.conf;\n"
+        )
 
     def _generate_site_config(self, site: "SiteConfig", ssl_ready: bool) -> str:
         bench_name = self.bench.config.name
@@ -44,21 +48,13 @@ class NginxManager:
         redis_config = self.bench.config.redis
         bench_root = self.bench.path
 
-        upstream_block = self._render_upstream_block(bench_name)
-
-        if not site.ssl:
-            return upstream_block + self._render_http_only_block(
-                site, bench_name, nginx_config, redis_config, bench_root
-            )
-
-        if not ssl_ready:
-            return upstream_block + self._render_http_only_block(
+        if not site.ssl or not ssl_ready:
+            return self._render_http_only_block(
                 site, bench_name, nginx_config, redis_config, bench_root
             )
 
         return (
-            upstream_block
-            + self._render_http_redirect_block(site, nginx_config)
+            self._render_http_redirect_block(site, nginx_config)
             + self._render_https_block(site, bench_name, nginx_config, redis_config, bench_root)
         )
 
