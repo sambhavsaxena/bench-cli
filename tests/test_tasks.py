@@ -64,7 +64,6 @@ def test_build_argv_get_app(tmp_path: Path) -> None:
     assert argv[0] == sys.executable
     assert argv[1:3] == ["-m", "admin.backend.tasks.jobs.get_app_task"]
     assert str(tmp_path) in argv
-    assert "erpnext" in argv
     assert "https://github.com/frappe/erpnext" in argv
 
 

@@ -1,5 +1,8 @@
 # bench-cli
 
+[![Unit Tests](https://github.com/frappe/bench-cli/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/frappe/bench-cli/actions/workflows/unit-tests.yml)
+[![codecov](https://codecov.io/gh/frappe/bench-cli/branch/main/graph/badge.svg)](https://codecov.io/gh/frappe/bench-cli)
+
 A zero-dependency CLI for managing [Frappe](https://frappeframework.com) environments with Admin UI. Single `bench.toml`. No Docker.
 
 ![Apps](docs/screenshots/apps.png)
@@ -126,3 +129,20 @@ bench-cli/
         ├── pids/                   # bench.pid + per-process PID files
         └── config/                 # Procfile, Redis configs, Nginx configs
 ```
+
+## Testing
+
+```bash
+# Install test dependencies
+pip install -e ".[test]"
+
+# Run unit tests
+pytest tests/ --ignore=tests/integration
+
+# Run with coverage
+pytest tests/ --ignore=tests/integration --cov=bench_cli --cov-report=term-missing
+```
+
+Unit tests run against mocked filesystems — no MariaDB, Redis, or network required.
+
+Integration tests (in `tests/integration/`) run the full `bench init` → `bench new-site` lifecycle against real services and are triggered by CI on push to `main`.
