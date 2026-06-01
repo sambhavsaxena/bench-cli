@@ -35,7 +35,7 @@ class SnapshotReader:
             return SnapshotStatus(volume_enabled=False, snapshots_enabled=False)
 
         datasets = self._resolve_datasets(volume_config, dataset_filter)
-        manager = VolumeManager(volume_config, bench_config.mariadb)
+        manager = VolumeManager(volume_config)
         snapshots = self._collect_snapshots(manager, datasets)
         return SnapshotStatus(
             volume_enabled=True,

@@ -110,6 +110,12 @@ class Bench:
         names = [app.config.name for app in self.apps()]
         apps_txt.write_text("\n".join(names) + "\n" if names else "")
 
+    def set_maintenance_mode(self, enabled: bool) -> None:
+        config_path = self.sites_path / "common_site_config.json"
+        config = json.loads(config_path.read_text())
+        config["maintenance_mode"] = 1 if enabled else 0
+        config_path.write_text(json.dumps(config, indent=2))
+
     def write_common_site_config(self) -> None:
         r = self.config.redis
         if r.is_single_instance:

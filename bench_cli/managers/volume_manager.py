@@ -5,16 +5,11 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from bench_cli.config.volume_config import VolumeConfig
 from bench_cli.exceptions import CommandError, VolumeError
-from bench_cli.managers.snapshot_prerequisite import BenchSnapshotPrerequisite, MariaDBSnapshotPrerequisite, SnapshotPrerequisite
 from bench_cli.platform import get_package_manager
 from bench_cli.utils import run_command
-
-if TYPE_CHECKING:
-    from bench_cli.config.mariadb_config import MariaDBConfig
 
 
 @dataclass
@@ -27,9 +22,8 @@ class SnapshotInfo:
 
 
 class VolumeManager:
-    def __init__(self, config: VolumeConfig, mariadb_config: MariaDBConfig | None = None) -> None:
+    def __init__(self, config: VolumeConfig) -> None:
         self.config = config
-        self._mariadb_config = mariadb_config
 
     def _ensure_zfs(self):
         if shutil.which("zfs"):
@@ -93,16 +87,15 @@ class VolumeManager:
         self._run(["sudo", "rsync", "-a", f"{source}/", f"{current_mount}/"])
         print("Data migration complete.")
 
-    def _snapshot_prerequisite(self, dataset: str) -> SnapshotPrerequisite:
-        if dataset == self.config.mariadb_dataset and self._mariadb_config:
-            return MariaDBSnapshotPrerequisite(self._mariadb_config)
-        return BenchSnapshotPrerequisite()
-
     def snapshot(self, dataset: str, tag: str) -> None:
         if not self.config.snapshots.enabled:
             raise VolumeError("Snapshots are disabled. Set volume.snapshots.enabled = true in bench.toml to enable.")
-        with self._snapshot_prerequisite(dataset):
-            self._run(["sudo", "zfs", "snapshot", f"{dataset}@{tag}"])
+        self._run(["sudo", "zfs", "snapshot", f"{dataset}@{tag}"])
+
+    def rollback_snapshot(self, dataset: str, tag: str) -> None:
+        if not self._snapshot_exists(f"{dataset}@{tag}"):
+            raise VolumeError(f"Snapshot '{dataset}@{tag}' does not exist.")
+        self._run(["sudo", "zfs", "rollback", "-r", f"{dataset}@{tag}"])
 
     def list_snapshots(self, dataset: str) -> list[SnapshotInfo]:
         try:
