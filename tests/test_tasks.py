@@ -28,16 +28,16 @@ def test_generate_task_id_format() -> None:
 def test_build_argv_migrate(tmp_path: Path) -> None:
     runner = TaskRunner(tmp_path)
     argv = runner._build_argv("migrate", {"site": "mysite.localhost"})
-    bench_bin = str(tmp_path / "env" / "bin" / "bench")
-    assert argv == [bench_bin, "frappe", "--site", "mysite.localhost", "migrate"]
+    python = str(tmp_path / "env" / "bin" / "python")
+    assert argv == [python, "-m", "frappe.utils.bench_helper", "frappe", "--site", "mysite.localhost", "migrate"]
     assert Path(argv[0]).is_absolute()
 
 
 def test_build_argv_clear_cache(tmp_path: Path) -> None:
     runner = TaskRunner(tmp_path)
     argv = runner._build_argv("clear-cache", {"site": "mysite.localhost"})
-    bench_bin = str(tmp_path / "env" / "bin" / "bench")
-    assert argv == [bench_bin, "frappe", "--site", "mysite.localhost", "clear-cache"]
+    python = str(tmp_path / "env" / "bin" / "python")
+    assert argv == [python, "-m", "frappe.utils.bench_helper", "frappe", "--site", "mysite.localhost", "clear-cache"]
 
 
 def test_build_argv_install_app(tmp_path: Path) -> None:
@@ -54,8 +54,8 @@ def test_build_argv_install_app(tmp_path: Path) -> None:
 def test_build_argv_uninstall_app(tmp_path: Path) -> None:
     runner = TaskRunner(tmp_path)
     argv = runner._build_argv("uninstall-app", {"site": "mysite.localhost", "app": "erpnext"})
-    bench_bin = str(tmp_path / "env" / "bin" / "bench")
-    assert argv == [bench_bin, "frappe", "--site", "mysite.localhost", "uninstall-app", "erpnext", "--yes", "--no-backup"]
+    python = str(tmp_path / "env" / "bin" / "python")
+    assert argv == [python, "-m", "frappe.utils.bench_helper", "frappe", "--site", "mysite.localhost", "uninstall-app", "erpnext", "--yes", "--no-backup"]
 
 
 def test_build_argv_get_app(tmp_path: Path) -> None:
@@ -77,16 +77,16 @@ def test_build_argv_get_app_with_branch(tmp_path: Path) -> None:
 def test_build_argv_build_no_app(tmp_path: Path) -> None:
     runner = TaskRunner(tmp_path)
     argv = runner._build_argv("build", {})
-    bench_bin = str(tmp_path / "env" / "bin" / "bench")
-    assert argv == [bench_bin, "frappe", "build"]
+    python = str(tmp_path / "env" / "bin" / "python")
+    assert argv == [python, "-m", "frappe.utils.bench_helper", "frappe", "build"]
     assert Path(argv[0]).is_absolute()
 
 
 def test_build_argv_build_with_app(tmp_path: Path) -> None:
     runner = TaskRunner(tmp_path)
     argv = runner._build_argv("build", {"app": "erpnext"})
-    bench_bin = str(tmp_path / "env" / "bin" / "bench")
-    assert argv == [bench_bin, "frappe", "build", "--app", "erpnext"]
+    python = str(tmp_path / "env" / "bin" / "python")
+    assert argv == [python, "-m", "frappe.utils.bench_helper", "frappe", "build", "--app", "erpnext"]
 
 
 def test_build_argv_update(tmp_path: Path) -> None:
@@ -110,8 +110,8 @@ def test_build_argv_switch_branch(tmp_path: Path) -> None:
 def test_build_argv_backup_site(tmp_path: Path) -> None:
     runner = TaskRunner(tmp_path)
     argv = runner._build_argv("backup-site", {"site": "mysite.localhost"})
-    bench_bin = str(tmp_path / "env" / "bin" / "bench")
-    assert argv == [bench_bin, "frappe", "--site", "mysite.localhost", "backup"]
+    python = str(tmp_path / "env" / "bin" / "python")
+    assert argv == [python, "-m", "frappe.utils.bench_helper", "frappe", "--site", "mysite.localhost", "backup"]
 
 
 def test_build_argv_unknown_command_raises(tmp_path: Path) -> None:

@@ -95,21 +95,22 @@ class TaskRunner:
             if key not in args:
                 raise ValueError(f"Command {command!r} requires arg {key!r}")
 
-        bench_bin = str(self._bench_root / "env" / "bin" / "bench")
+        python = str(self._bench_root / "env" / "bin" / "python")
+        frappe_call = [python, "-m", "frappe.utils.bench_helper"]
 
         if command == "migrate":
-            return [bench_bin, "frappe", "--site", args["site"], "migrate"]
+            return [*frappe_call, "frappe", "--site", args["site"], "migrate"]
         if command == "clear-cache":
-            return [bench_bin, "frappe", "--site", args["site"], "clear-cache"]
+            return [*frappe_call, "frappe", "--site", args["site"], "clear-cache"]
         if command == "uninstall-app":
-            return [bench_bin, "frappe", "--site", args["site"], "uninstall-app", args["app"], "--yes", "--no-backup"]
+            return [*frappe_call, "frappe", "--site", args["site"], "uninstall-app", args["app"], "--yes", "--no-backup"]
         if command == "backup-site":
-            command = [bench_bin, "frappe", "--site", args["site"], "backup"]
+            command = [*frappe_call, "frappe", "--site", args["site"], "backup"]
             if args.get("with_files"):
                 command += ["--with-files"]
             return command
         if command == "build":
-            cmd = [bench_bin, "frappe", "build"]
+            cmd = [*frappe_call, "frappe", "build"]
             if args.get("app"):
                 cmd += ["--app", args["app"]]
             return cmd

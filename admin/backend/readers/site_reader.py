@@ -24,11 +24,7 @@ class SiteReader:
         sites_path = self._bench_root / "sites"
         if not sites_path.is_dir():
             return []
-        return [
-            self._read_site(d.name)
-            for d in sorted(sites_path.iterdir())
-            if d.is_dir() and (d / "site_config.json").exists()
-        ]
+        return [self._read_site(d.name) for d in sorted(sites_path.iterdir()) if d.is_dir() and (d / "site_config.json").exists()]
 
     def read_one(self, site_name: str) -> SiteInfo:
         return self._read_site(site_name)
@@ -58,11 +54,11 @@ class SiteReader:
         )
 
     def _list_apps(self, site_name: str) -> list[str]:
-        bench_bin = str(self._bench_root / "env" / "bin" / "bench")
+        python = str(self._bench_root / "env" / "bin" / "python")
         sites_dir = str(self._bench_root / "sites")
         try:
             result = subprocess.run(
-                [bench_bin, "frappe", "--site", site_name, "list-apps"],
+                [python, "-m", "frappe.utils.bench_helper", "frappe", "--site", site_name, "list-apps"],
                 cwd=sites_dir,
                 capture_output=True,
                 text=True,
@@ -78,5 +74,5 @@ class SiteReader:
                     if app_name:
                         apps.append(app_name)
             return apps
-        except Exception:
+        except Exception as e:
             return []

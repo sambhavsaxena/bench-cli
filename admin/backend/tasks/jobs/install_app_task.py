@@ -18,13 +18,12 @@ class InstallAppTask(BaseTask):
         self.app = args.app
 
     def run(self) -> None:
-        bench_bin = str(self.bench.env_path / "bin" / "bench")
         sites_dir = self.bench_root / "sites"
 
         print(f"Installing {self.app} into {self.site}...")
         sys.stdout.flush()
         result = subprocess.run(
-            [bench_bin, "frappe", "--site", self.site, "install-app", self.app],
+            [*self.bench.frappe_call, "frappe", "--site", self.site, "install-app", self.app],
             cwd=str(sites_dir),
         )
         if result.returncode != 0:
@@ -38,7 +37,7 @@ class InstallAppTask(BaseTask):
 
         print("\nBuilding assets...")
         sys.stdout.flush()
-        subprocess.run([bench_bin, "frappe", "build", "--force"], cwd=str(sites_dir))
+        subprocess.run([*self.bench.frappe_call, "frappe", "build", "--force"], cwd=str(sites_dir))
 
 
 if __name__ == "__main__":
