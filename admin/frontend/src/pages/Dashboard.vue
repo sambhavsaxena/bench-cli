@@ -58,6 +58,10 @@ function poolHealthTheme(health) {
   return POOL_HEALTH_THEME[health] ?? 'red'
 }
 
+function diskPercent(bytes) {
+  return stats.value ? (bytes / stats.value.disk_total) * 100 : 0
+}
+
 const chartConfig = computed(() => ({
   title: 'CPU & Memory',
   data: history.value,
@@ -211,6 +215,16 @@ onUnmounted(() => {
                 <span class="text-sm text-ink-gray-5">{{ formatBytes(stats.disk_used) }} / {{ formatBytes(stats.disk_total) }}</span>
               </div>
               <Progress :value="stats.disk_percent" size="md" />
+            </div>
+          </div>
+
+          <div v-else-if="stats.paths?.length" class="grid grid-cols-3 gap-6">
+            <div v-for="pathInfo in stats.paths" :key="pathInfo.path">
+              <div class="mb-2 flex items-baseline justify-between">
+                <span class="text-sm font-medium text-ink-gray-7">{{ pathInfo.label }}</span>
+                <span class="text-sm text-ink-gray-5">{{ formatBytes(pathInfo.used_bytes) }}</span>
+              </div>
+              <Progress :value="diskPercent(pathInfo.used_bytes)" size="md" />
             </div>
           </div>
 

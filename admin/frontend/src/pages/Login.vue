@@ -38,18 +38,16 @@ async function login() {
 </script>
 
 <template>
-  <div class="flex h-screen items-center justify-center bg-surface-gray-2">
-    <div class="w-full max-w-sm rounded-xl border border-outline-gray-2 bg-surface-white shadow-sm">
+  <div class="flex h-screen flex-col items-center justify-center bg-surface-gray-2">
+    <div class="mb-6 flex flex-col items-center gap-3">
+      <img src="/logos/frappe-icon.png" alt="Frappe" class="h-12 w-12 rounded-xl" />
+      <h1 class="text-xl font-semibold text-ink-gray-9">
+        {{ benchName ? `Login to ${benchName}` : 'Bench Admin' }}
+      </h1>
+    </div>
 
-      <div class="border-b border-outline-gray-2 px-6 py-5">
-        <p class="text-base font-semibold text-ink-gray-9">{{ benchName || 'Bench Admin' }}</p>
-        <p class="mt-1 text-sm text-ink-gray-5">
-          Enter the password configured in
-          <code class="rounded bg-surface-gray-2 px-1 font-mono text-xs">bench.toml</code>
-        </p>
-      </div>
-
-      <div class="flex flex-col gap-3 px-6 py-5">
+    <div class="w-full max-w-sm rounded-xl border border-outline-gray-2 bg-surface-white p-6 shadow-sm">
+      <div class="flex flex-col gap-3">
         <TextInput
           v-model="password"
           type="password"
@@ -57,11 +55,14 @@ async function login() {
           @keydown.enter="login"
         />
         <ErrorMessage v-if="error" :message="error" />
-        <Button variant="solid" theme="blue" :loading="loading" @click="login">
-          Sign in
+        <Button variant="solid" :loading="loading" class="w-full" @click="login">
+          Login
         </Button>
       </div>
-
+      <p class="mt-4 text-center text-xs text-ink-gray-4">
+        Enter the password configured in
+        <code class="rounded bg-surface-gray-2 px-1 font-mono">bench.toml</code>
+      </p>
     </div>
   </div>
 </template>
