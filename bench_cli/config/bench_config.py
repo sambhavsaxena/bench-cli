@@ -139,6 +139,7 @@ class BenchConfig:
             port=data.get("port", 8002),
             timeout=data.get("timeout", 180),
             enabled=data.get("enabled", False),
+            password=data.get("password", ""),
         )
 
     @staticmethod

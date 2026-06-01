@@ -4,6 +4,12 @@ import { RouterView, useRoute } from 'vue-router'
 import { Breadcrumbs } from 'frappe-ui'
 import AppSidebar from './AppSidebar.vue'
 
+const props = defineProps({
+  passwordRequired: { type: Boolean, default: false },
+})
+
+const emit = defineEmits(['logout'])
+
 const route = useRoute()
 
 const breadcrumbs = computed(() => {
@@ -39,7 +45,7 @@ const breadcrumbs = computed(() => {
 
 <template>
   <div class="flex h-screen overflow-hidden">
-    <AppSidebar />
+    <AppSidebar :password-required="passwordRequired" @logout="$emit('logout')" />
     <main class="flex-1 overflow-auto bg-surface-white">
       <header class="sticky top-0 z-[10] flex items-center border-b bg-surface-white px-5 py-2.5">
         <Breadcrumbs :items="breadcrumbs" />

@@ -9,7 +9,14 @@ import LucideFileText from '~icons/lucide/file-text'
 import LucideGlobe from '~icons/lucide/globe'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideListTodo from '~icons/lucide/list-todo'
+import LucideLogOut from '~icons/lucide/log-out'
 import LucidePackage2 from '~icons/lucide/package-2'
+
+defineProps({
+  passwordRequired: { type: Boolean, default: false },
+})
+
+const emit = defineEmits(['logout'])
 
 const route = useRoute()
 
@@ -29,6 +36,8 @@ const baseNavItems = [
 ]
 
 const snapshotsEnabled = ref(false)
+const runningCount = ref(0)
+let pollTimer = null
 
 const navItems = computed(() => [
   ...baseNavItems,
@@ -42,14 +51,11 @@ function isActive(to) {
   return route.path.startsWith(to)
 }
 
-const runningCount = ref(0)
-let pollTimer = null
-
 async function pollRunning() {
   try {
-    const res = await fetch('/api/tasks/?status=running')
-    if (res.ok) {
-      const tasks = await res.json()
+    const response = await fetch('/api/tasks/?status=running')
+    if (response.ok) {
+      const tasks = await response.json()
       runningCount.value = Array.isArray(tasks) ? tasks.length : 0
     }
   } catch { }
@@ -57,13 +63,17 @@ async function pollRunning() {
 
 async function loadVolumeConfig() {
   try {
-    const res = await fetch('/api/volume/status')
-    if (res.ok) {
-      const data = await res.json()
-      console.log(data)
+    const response = await fetch('/api/volume/status')
+    if (response.ok) {
+      const data = await response.json()
       snapshotsEnabled.value = data.enabled === true
     }
   } catch { }
+}
+
+async function logout() {
+  await fetch('/api/logout', { method: 'POST' })
+  emit('logout')
 }
 
 onMounted(() => {
@@ -85,6 +95,9 @@ onUnmounted(() => clearInterval(pollTimer))
           </span>
         </template>
       </SidebarItem>
+    </template>
+    <template v-if="passwordRequired" #footer-items>
+      <SidebarItem label="Logout" :icon="LucideLogOut" @click="logout" />
     </template>
   </Sidebar>
 </template>

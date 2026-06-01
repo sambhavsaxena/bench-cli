@@ -1,3 +1,4 @@
+import secrets
 from pathlib import Path
 
 from bench_cli.exceptions import BenchError
@@ -39,6 +40,7 @@ long = 1
 port = 8002
 enabled = false
 timeout = 180
+password = "{admin_password}"
 
 # ── Volume (ZFS, optional) ────────────────────────────────────────────────
 # Uncomment and configure to use ZFS-based volume management.
@@ -82,7 +84,7 @@ class NewCommand:
         self.target_directory.mkdir(parents=True, exist_ok=True)
 
         print("Writing bench.toml")
-        bench_toml.write_text(_BENCH_TOML_TEMPLATE.format(name=self.name))
+        bench_toml.write_text(_BENCH_TOML_TEMPLATE.format(name=self.name, admin_password=secrets.token_hex(nbytes=5)))
 
         print(f"\nBench '{self.name}' created at {self.target_directory}")
         print("\nNext steps:")
