@@ -115,7 +115,6 @@ class SupervisorProcessManager(ProcessManager):
 
     def _prod_process_definitions(self) -> list[ProcessDefinition]:
         """Process definitions for production (no dev processes)."""
-        from bench_cli.managers.process_manager import ProcessDefinition
         defs = [
             self._web_definition(),
             self._socketio_definition(),
@@ -123,6 +122,7 @@ class SupervisorProcessManager(ProcessManager):
             *self._worker_definitions("default", self.bench.config.workers.default_count),
             *self._worker_definitions("short", self.bench.config.workers.short_count),
             *self._worker_definitions("long", self.bench.config.workers.long_count),
+            *[pd for entry in self.bench.config.workers.custom for pd in self._worker_definitions(entry.queue, entry.count)],
         ]
         if self.bench.config.redis.is_single_instance:
             defs.append(self._redis_definition("redis", "redis.conf"))
