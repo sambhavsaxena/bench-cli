@@ -55,6 +55,9 @@ class SupervisorProcessManager(ProcessManager):
     def stop(self) -> None:
         run_command(["supervisorctl", "stop", f"{self.bench.config.name}:*"])
 
+    def restart(self) -> None:
+        run_command(["supervisorctl", "restart", f"{self.bench.config.name}:*"])
+
     def is_running(self) -> bool:
         import subprocess
         result = subprocess.run(

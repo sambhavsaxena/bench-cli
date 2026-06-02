@@ -8,25 +8,24 @@ from bench_cli.exceptions import BenchError
 if typing.TYPE_CHECKING:
     from bench_cli.core.bench import Bench
 
-_OWN_COMMANDS = frozenset(
-    [
-        "new",
-        "init",
-        "start",
-        "stop",
-        "get-app",
-        "new-site",
-        "frappe",
-        "build",
-        "update",
-        "build-admin",
-        "setup",
-        "volume",
-        "remove-app",
-        "uninstall-app",
-        "list-apps",
-    ],
-)
+_OWN_COMMANDS = frozenset([
+    "new",
+    "init",
+    "start",
+    "stop",
+    "restart",
+    "get-app",
+    "new-site",
+    "frappe",
+    "build",
+    "update",
+    "build-admin",
+    "setup",
+    "volume",
+    "remove-app",
+    "uninstall-app",
+    "list-apps",
+])
 _OWN_GROUP_OPTIONS = frozenset(["--verbose", "--yes", "-y", "--bench", "-b", "--help", "-h"])
 
 # Global bench name selected via -b / --bench; set in main() before dispatch.
@@ -140,6 +139,7 @@ def _make_parser() -> argparse.ArgumentParser:
     sub.add_parser("init", help="Initialise the bench.")
     sub.add_parser("start", help="Start all bench processes.")
     sub.add_parser("stop", help="Stop the running bench.")
+    sub.add_parser("restart", help="Restart supervisor processes (production mode only).")
     p_build = sub.add_parser("build", help="Build assets (downloads pre-built if available).")
     p_build.add_argument("--force", action="store_true", help="Force a full rebuild, skipping pre-built asset download.")
     sub.add_parser("update", help="Pull latest code and migrate sites.")
@@ -277,6 +277,11 @@ def _dispatch(args: argparse.Namespace) -> None:
         from bench_cli.commands.stop import StopCommand
 
         StopCommand(_load_bench()).run()
+
+    elif cmd == "restart":
+        from bench_cli.commands.restart import RestartCommand
+
+        RestartCommand(_load_bench()).run()
 
     elif cmd == "get-app":
         _cmd_get_app(args)
