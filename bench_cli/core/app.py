@@ -54,7 +54,12 @@ class App:
 
     @property
     def _is_shallow(self) -> bool:
-        return (self.path / ".git" / "shallow").exists()
+        import subprocess
+        result = subprocess.run(
+            ["git", "-C", str(self.path), "rev-parse", "--is-shallow-repository"],
+            capture_output=True, text=True,
+        )
+        return result.stdout.strip() == "true"
 
     @staticmethod
     def _pack_threads() -> int:
