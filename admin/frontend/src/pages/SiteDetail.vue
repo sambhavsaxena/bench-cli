@@ -11,6 +11,7 @@ const siteName = route.params.name
 
 const site = ref(null)
 const httpPort = ref(8000)
+const nginxEnabled = ref(false)
 const installable = ref([])
 const registry = ref([])
 const loading = ref(true)
@@ -264,6 +265,7 @@ async function load() {
     const d = await res.json()
     site.value = d.site
     httpPort.value = d.http_port ?? 8000
+    nginxEnabled.value = d.nginx_enabled ?? false
     installable.value = d.installable_apps
   } catch (e) {
     error.value = e.message
@@ -364,7 +366,7 @@ onMounted(() => { load(); loadRegistry() })
           <Button variant="outline" :loading="actionLoading === 'backup'" @click="doAction('backup')">
             Backup
           </Button>
-          <Button v-if="!site.site_config?.ssl" variant="outline" :loading="sslLoading" @click="enableSsl">
+          <Button v-if="nginxEnabled && !site.site_config?.ssl" variant="outline" :loading="sslLoading" @click="enableSsl">
             Enable SSL
           </Button>
           <Button v-if="installable.length" variant="solid" @click="showInstall = true">

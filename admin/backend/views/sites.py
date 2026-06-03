@@ -7,7 +7,7 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 
-from admin.backend.tasks.callbacks import new_site_failure_callback
+from admin.backend.tasks.callbacks import new_site_failure_callback, ssl_setup_failure_callback
 from admin.backend.tasks.manager.task_runner import TaskRunner
 
 from ..readers.app_reader import AppReader
@@ -44,13 +44,16 @@ def detail(name: str):
     from bench_cli.config.bench_config import BenchConfig
 
     try:
-        http_port = BenchConfig.from_file(bench_root / "bench.toml").http_port
+        bench_config = BenchConfig.from_file(bench_root / "bench.toml")
+        http_port = bench_config.http_port
+        nginx_enabled = bench_config.nginx.enabled
     except Exception:
         http_port = 8000
+        nginx_enabled = False
 
     site_dict = asdict(site)
     site_dict["site_config"] = _mask_password(site.site_config)
-    return jsonify({"site": site_dict, "installable_apps": installable, "http_port": http_port})
+    return jsonify({"site": site_dict, "installable_apps": installable, "http_port": http_port, "nginx_enabled": nginx_enabled})
 
 
 @sites_bp.route("/create", methods=["POST"])
@@ -237,7 +240,11 @@ def enable_ssl(name: str):
     config_path.write_text(json.dumps(current, indent=1))
 
     try:
-        task_id = TaskRunner(bench_root).run("setup-letsencrypt", {})
+        task_id = TaskRunner(bench_root).run(
+            "setup-letsencrypt",
+            {"site": name},
+            callbacks={"on_failure": ssl_setup_failure_callback},
+        )
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
     return jsonify({"ok": True, "task_id": task_id})
