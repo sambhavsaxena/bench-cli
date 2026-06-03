@@ -17,4 +17,6 @@ class RestartCommand:
         assert isinstance(manager, SupervisorProcessManager)
         if not manager.supervisor_conf_path.exists():
             raise BenchError("Supervisor config not found. Run 'bench setup production' first.")
+        manager.generate_config()
+        manager.reload()
         manager.restart()

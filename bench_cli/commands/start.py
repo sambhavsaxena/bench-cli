@@ -19,6 +19,8 @@ class RunCommand:
                     "Supervisor config not found. "
                     "Run 'bench setup production' first."
                 )
+            process_manager.generate_config()
+            process_manager.reload()
         else:
             if not process_manager.procfile_path.exists():
                 raise BenchError(
