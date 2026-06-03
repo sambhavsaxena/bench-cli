@@ -220,6 +220,43 @@ def test_read_output_returns_all_lines_when_fewer_than_limit(tmp_path: Path) -> 
     assert result == ["alpha", "beta", "gamma"]
 
 
+# ── _collapse_cr ────────────────────────────────────────────────────────────
+
+
+def test_collapse_cr_no_cr() -> None:
+    from admin.backend.tasks.manager.task_reader import _collapse_cr
+    assert _collapse_cr("hello world") == "hello world"
+
+
+def test_collapse_cr_takes_last_segment() -> None:
+    from admin.backend.tasks.manager.task_reader import _collapse_cr
+    assert _collapse_cr("[50%]\r[60%]\r[70%]") == "[70%]"
+
+
+def test_collapse_cr_leading_cr() -> None:
+    from admin.backend.tasks.manager.task_reader import _collapse_cr
+    assert _collapse_cr("\rUpdating [93%]") == "Updating [93%]"
+
+
+def test_collapse_cr_trailing_cr_ignored() -> None:
+    from admin.backend.tasks.manager.task_reader import _collapse_cr
+    assert _collapse_cr("[100%]\r") == "[100%]"
+
+
+def test_read_output_collapses_cr_lines(tmp_path: Path) -> None:
+    task_id = "20260521-143022-aabbcc"
+    task_dir = _make_task_dir(tmp_path / "tasks", task_id)
+    # Simulate progress bar: three \r-terminated updates, then \n
+    raw = b"[50%]\r[60%]\r[70%]\nDone\n"
+    (task_dir / "output.log").write_bytes(raw)
+
+    reader = TaskReader(tmp_path)
+    with patch("os.kill", return_value=None):
+        result = reader.read_output(task_id, lines=200)
+
+    assert result == ["[70%]", "Done"]
+
+
 # ── TaskRunner task retention ────────────────────────────────────────────────
 
 
