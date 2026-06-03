@@ -36,7 +36,9 @@ def create_app(bench_root: Path) -> Flask:
         return None
 
     def _check_password(config: BenchConfig):
-        if config.admin.password and not session.get("authenticated"):
+        if not config.admin.password:
+            return jsonify({"error": "No admin password configured in bench.toml", "enabled": False}), 503
+        if not session.get("authenticated"):
             return jsonify({"error": "Authentication required"}), 401
         return None
 
@@ -54,14 +56,13 @@ def create_app(bench_root: Path) -> Flask:
     def api_status():
         try:
             config = BenchConfig.from_file(bench_root / "bench.toml")
-            password_required = bool(config.admin.password)
-            authenticated = not password_required or bool(session.get("authenticated"))
+            if not config.admin.password:
+                return jsonify({"enabled": False, "error": "No admin password configured in bench.toml"}), 503
             return jsonify(
                 {
                     "enabled": config.admin.enabled,
                     "name": config.name,
-                    "password_required": password_required,
-                    "authenticated": authenticated,
+                    "authenticated": bool(session.get("authenticated")),
                 }
             )
         except Exception as exc:
@@ -73,6 +74,8 @@ def create_app(bench_root: Path) -> Flask:
             config = BenchConfig.from_file(bench_root / "bench.toml")
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 503
+        if not config.admin.password:
+            return jsonify({"ok": False, "error": "No admin password configured in bench.toml"}), 503
         data = request.get_json(silent=True) or {}
         if data.get("password") == config.admin.password:
             session["authenticated"] = True

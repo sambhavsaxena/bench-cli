@@ -7,7 +7,7 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 
-from admin.backend.tasks.callbacks import new_site_failure_callback
+from admin.backend.tasks.callbacks import new_site_failure_callback, ssl_setup_failure_callback
 from admin.backend.tasks.manager.task_runner import TaskRunner
 
 from ..readers.app_reader import AppReader
@@ -240,7 +240,11 @@ def enable_ssl(name: str):
     config_path.write_text(json.dumps(current, indent=1))
 
     try:
-        task_id = TaskRunner(bench_root).run("setup-letsencrypt", {})
+        task_id = TaskRunner(bench_root).run(
+            "setup-letsencrypt",
+            {"site": name},
+            callbacks={"on_failure": ssl_setup_failure_callback},
+        )
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
     return jsonify({"ok": True, "task_id": task_id})

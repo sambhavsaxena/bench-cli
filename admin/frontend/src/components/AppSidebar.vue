@@ -12,10 +12,6 @@ import LucideListTodo from '~icons/lucide/list-todo'
 import LucideLogOut from '~icons/lucide/log-out'
 import LucidePackage2 from '~icons/lucide/package-2'
 
-defineProps({
-  passwordRequired: { type: Boolean, default: false },
-})
-
 const emit = defineEmits(['logout'])
 
 const route = useRoute()
@@ -96,7 +92,7 @@ onUnmounted(() => clearInterval(pollTimer))
         </template>
       </SidebarItem>
     </template>
-    <template v-if="passwordRequired" #footer-items>
+    <template #footer-items>
       <SidebarItem label="Logout" :icon="LucideLogOut" @click="logout" />
     </template>
   </Sidebar>
