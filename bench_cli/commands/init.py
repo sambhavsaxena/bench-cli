@@ -15,7 +15,7 @@ class InitCommand:
     def run(self) -> None:
         production = self.bench.config.nginx.enabled
         volume_enabled = self.bench.config.volume.enabled
-        self._total_steps = 9 + (3 if production else 0) + (1 if volume_enabled else 0)
+        self._total_steps = 10 + (3 if production else 0) + (1 if volume_enabled else 0)
 
         self._step("Validate bench.toml")
         self.bench.config.validate()
@@ -54,6 +54,9 @@ class InitCommand:
         self._step("Configure Redis")
         RedisManager(self.bench.config.redis, self.bench).generate_configs()
 
+        self._step("Download admin frontend")
+        self._download_admin_frontend()
+
         self._step("Generate process config")
         self._write_common_config_for_production(production)
         ProcessManagerFactory.create(self.bench).generate_config()
@@ -73,6 +76,12 @@ class InitCommand:
     def _step(self, description: str) -> None:
         self._step_counter += 1
         print(f"[{self._step_counter}/{self._total_steps}] {description}...", flush=True)
+
+    def _download_admin_frontend(self) -> None:
+        from bench_cli.commands.admin import download_admin_frontend, BuildAdminCommand, _cli_root
+        if not download_admin_frontend(_cli_root()):
+            print("  Pre-built download failed — building from source (requires Node.js)...")
+            BuildAdminCommand().run()
 
     def _setup_volume(self) -> None:
         from bench_cli.commands.volume import VolumeSetupCommand

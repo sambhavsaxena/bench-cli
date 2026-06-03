@@ -19,6 +19,7 @@ _OWN_COMMANDS = frozenset([
     "frappe",
     "build",
     "update",
+    "upgrade",
     "build-admin",
     "setup",
     "volume",
@@ -164,7 +165,8 @@ def _make_parser() -> argparse.ArgumentParser:
     p_frappe = sub.add_parser("frappe", help="Run a frappe CLI command.")
     p_frappe.add_argument("args", nargs=argparse.REMAINDER)
 
-    sub.add_parser("build-admin", help="Rebuild admin frontend assets.")
+    sub.add_parser("build-admin", help="Rebuild admin frontend assets from source.")
+    sub.add_parser("upgrade", help="Pull latest bench-cli and download the admin frontend.")
 
     p_setup = sub.add_parser("setup", help="Production setup commands.")
     setup_sub = p_setup.add_subparsers(dest="setup_command")
@@ -328,6 +330,11 @@ def _dispatch(args: argparse.Namespace) -> None:
         from bench_cli.commands.admin import BuildAdminCommand
 
         BuildAdminCommand().run()
+
+    elif cmd == "upgrade":
+        from bench_cli.commands.upgrade import UpgradeCommand
+
+        UpgradeCommand().run()
 
     elif cmd == "setup":
         _dispatch_setup(args)
