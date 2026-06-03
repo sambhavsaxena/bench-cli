@@ -29,15 +29,12 @@ class InstallAppTask(BaseTask):
         if result.returncode != 0:
             sys.exit(result.returncode)
 
-        app_dir = self.bench_root / "apps" / self.app
-        if (app_dir / "package.json").exists():
-            print(f"\nInstalling JS dependencies for {self.app}...")
+        app = next((a for a in self.bench.apps() if a.config.name == self.app), None)
+        if app:
+            print(f"\nBuilding assets for {self.app}...")
             sys.stdout.flush()
-            subprocess.run(["yarn", "install"], cwd=str(app_dir), check=False)
-
-        print("\nBuilding assets...")
-        sys.stdout.flush()
-        subprocess.run([*self.bench.frappe_call, "frappe", "build", "--force"], cwd=str(sites_dir))
+            from bench_cli.managers.python_env_manager import PythonEnvManager
+            PythonEnvManager(self.bench).build_assets_for_app(app)
 
 
 if __name__ == "__main__":
