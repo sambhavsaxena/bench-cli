@@ -7,3 +7,4 @@ class AdminConfig:
     timeout: int = 180  # seconds
     enabled: bool = False
     password: str = ""
+    domain: str = ""

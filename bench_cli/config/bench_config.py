@@ -140,6 +140,7 @@ class BenchConfig:
             timeout=data.get("timeout", 180),
             enabled=data.get("enabled", False),
             password=data.get("password", ""),
+            domain=data.get("domain", ""),
         )
 
     @staticmethod
