@@ -53,7 +53,12 @@ class App:
         ], stream_output=True)
 
     def update(self) -> None:
-        run_command(["git", "-C", str(self.path), "fetch", "origin"])
+        run_command([
+            "git", "-c", "pack.threads=1",
+            "-C", str(self.path),
+            "fetch", "origin", self.config.branch,
+            "--depth", "1",
+        ])
         run_command([
             "git", "-C", str(self.path),
             "merge", "--ff-only",
