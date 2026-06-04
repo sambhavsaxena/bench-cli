@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Button, Badge, Dialog, LoadingText, ErrorMessage } from 'frappe-ui'
 import TerminalOutput from '../components/TerminalOutput.vue'
 import { processLine } from '../utils/ansi.js'
+import LucideDownload from '~icons/lucide/download'
 
 const route = useRoute()
 const router = useRouter()
@@ -131,6 +132,9 @@ onUnmounted(() => { if (es) { es.close(); es = null } })
           {{ fmtDuration(task.duration_seconds) }}
         </span>
         <div class="ml-auto flex gap-2">
+          <a :href="`/api/tasks/${taskId}/output/download`" class="ml-auto">
+            <Button variant="ghost" :prefix-icon="LucideDownload">Download</Button>
+          </a>
           <Button
             v-if="task.status === 'running'"
             variant="outline"
