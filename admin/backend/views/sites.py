@@ -134,6 +134,20 @@ def drop_site(name: str):
     return jsonify({"ok": True, "task_id": task_id})
 
 
+@sites_bp.route("/<name>/force-drop", methods=["POST"])
+def force_drop_site(name: str):
+    import shutil
+    bench_root = Path(current_app.config["BENCH_ROOT"])
+    site_path = bench_root / "sites" / name
+    if not (site_path / "site_config.json").exists():
+        return jsonify({"ok": False, "error": "Site not found."}), 404
+    try:
+        shutil.rmtree(site_path)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
 @sites_bp.route("/<name>/backup", methods=["POST"])
 def backup_site(name: str):
     bench_root = Path(current_app.config["BENCH_ROOT"])

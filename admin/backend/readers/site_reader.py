@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from bench_cli.commands.list_site_apps import list_installed_apps
+from bench_cli.commands.list_site_apps import _query_via_db_cli
 
 
 @dataclass
@@ -15,6 +15,7 @@ class SiteInfo:
     db_host: str
     installed_apps: list[str]
     site_config: dict
+    broken: bool = False
 
 
 class SiteReader:
@@ -45,7 +46,18 @@ class SiteReader:
             except (json.JSONDecodeError, OSError):
                 site_config = {}
 
-        installed_apps = list_installed_apps(site_config, self._bench_root, site_name) if exists else []
+        installed_apps: list[str] = []
+        broken = False
+
+        if exists:
+            if isinstance(site_config.get("installed_apps"), list):
+                installed_apps = site_config["installed_apps"]
+            else:
+                apps = _query_via_db_cli(site_config)
+                if apps is not None:
+                    installed_apps = apps
+                else:
+                    broken = True
 
         return SiteInfo(
             name=site_name,
@@ -54,4 +66,5 @@ class SiteReader:
             db_host=site_config.get("db_host") or "localhost",
             installed_apps=installed_apps,
             site_config=site_config,
+            broken=broken,
         )

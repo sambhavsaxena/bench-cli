@@ -63,7 +63,7 @@ const columns = computed(() => [
   { label: 'Name', key: 'name', width: '200px' },
   {
     label: 'Status', key: '_status', width: '80px',
-    prefix: ({ row }) => h(Badge, { label: row._status, theme: row._status === 'online' ? 'green' : 'gray' }),
+    prefix: ({ row }) => h(Badge, { label: row._status, theme: row._status === 'online' ? 'green' : row._status === 'broken' ? 'red' : 'gray' }),
     getLabel: () => '',
   },
   {
@@ -79,7 +79,7 @@ const columns = computed(() => [
 const rows = computed(() =>
   sites.value.map(s => ({
     ...s,
-    _status: s.exists ? 'online' : 'offline',
+    _status: !s.exists ? 'offline' : s.broken ? 'broken' : 'online',
   }))
 )
 
