@@ -7,15 +7,21 @@ from bench_cli.managers.redis_manager import RedisManager
 
 
 class InitCommand:
-    def __init__(self, bench: Bench) -> None:
+    def __init__(self, bench: Bench, sudo_password: str = "") -> None:
         self.bench = bench
+        self._sudo_password = sudo_password
         self._step_counter = 0
         self._total_steps = 0
 
     def run(self) -> None:
         production = self.bench.config.production.nginx
         volume_enabled = self.bench.config.volume.enabled
-        self._total_steps = 10 + (3 if production else 0) + (1 if volume_enabled else 0)
+        has_sudoers = bool(self._sudo_password)
+        self._total_steps = 10 + (3 if production else 0) + (1 if volume_enabled else 0) + (1 if has_sudoers else 0)
+
+        if has_sudoers:
+            self._step("Configure passwordless sudo")
+            self._setup_sudoers()
 
         self._step("Validate bench.toml")
         self.bench.config.validate()
@@ -77,8 +83,43 @@ class InitCommand:
         self._step_counter += 1
         print(f"[{self._step_counter}/{self._total_steps}] {description}...", flush=True)
 
+    def _setup_sudoers(self) -> None:
+        import getpass
+        import subprocess
+
+        username = getpass.getuser()
+        rules = "\n".join(
+            [
+                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/apt-get",
+                f"{username} ALL=(ALL) NOPASSWD: /usr/sbin/nginx",
+                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/systemctl",
+                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/loginctl",
+                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/ln",
+                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/unlink",
+                f"{username} ALL=(ALL) NOPASSWD: /usr/sbin/zpool",
+                f"{username} ALL=(ALL) NOPASSWD: /usr/sbin/zfs",
+                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/rsync",
+            ]
+        )
+        content = f"# Frappe bench — managed by bench init, do not edit\n{rules}\n"
+        sudoers_path = f"/etc/sudoers.d/{username}"
+        result = subprocess.run(
+            ["sudo", "-S", "tee", sudoers_path],
+            input=f"{self._sudo_password}\n{content}",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            print(f"  Warning: could not write sudoers file — {result.stderr.strip() or 'permission denied'}")
+            print("  Sudo operations may prompt for a password during setup.")
+            return
+        subprocess.run(["sudo", "chmod", "0440", sudoers_path], capture_output=True, check=False)
+        print(f"  Wrote {sudoers_path}")
+
     def _download_admin_frontend(self) -> None:
         from bench_cli.commands.admin import download_admin_frontend, BuildAdminCommand, _cli_root
+
         if not download_admin_frontend(_cli_root()):
             print("  Pre-built download failed — building from source (requires Node.js)...")
             BuildAdminCommand().run()
@@ -123,15 +164,18 @@ class InitCommand:
     def _setup_process_manager(self) -> None:
         if self.bench.config.production.lightweight:
             from bench_cli.managers.systemd_process_manager import SystemdProcessManager
+
             mgr = SystemdProcessManager(self.bench)
         else:
             import subprocess
             from bench_cli.platform import get_package_manager, is_linux
+
             pkg = get_package_manager()
             if is_linux() and not pkg.is_installed("supervisor"):
                 pkg.install("supervisor")
                 subprocess.run(["sudo", "systemctl", "disable", "--now", "supervisor"], check=False)
             from bench_cli.managers.supervisor_process_manager import SupervisorProcessManager
+
             mgr = SupervisorProcessManager(self.bench)
         mgr.install_config()
         mgr.reload()

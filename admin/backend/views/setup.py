@@ -47,8 +47,12 @@ def _validate(data: dict) -> str | None:
 @setup_bp.route("/init", methods=["POST"])
 def start_init():
     bench_root = Path(current_app.config["BENCH_ROOT"])
+    data = request.get_json(silent=True) or {}
+    args = {}
+    if data.get("sudo_password"):
+        args["sudo_password"] = data["sudo_password"]
     try:
-        task_id = TaskRunner(bench_root).run("bench-init", {})
+        task_id = TaskRunner(bench_root).run("bench-init", args)
         return jsonify({"ok": True, "task_id": task_id})
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
