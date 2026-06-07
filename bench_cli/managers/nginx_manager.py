@@ -278,7 +278,9 @@ class NginxManager:
         symlink_path = nginx_dir / f"{self.bench.config.name}.conf"
         source_path = self.bench.config_path / "nginx" / "include.conf"
 
-        run_command(["sudo", "ln", "-sf", str(source_path), str(symlink_path)])
+        if symlink_path.exists() or symlink_path.is_symlink():
+            run_command(["sudo", "unlink", str(symlink_path)])
+        run_command(["sudo", "ln", "-s", str(source_path), str(symlink_path)])
 
     def reload(self) -> None:
         run_command(["sudo", "nginx", "-t"])
