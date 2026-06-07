@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Badge, Card, LoadingText, ErrorMessage, Progress, AxisChart } from 'frappe-ui'
+import { Badge, LoadingText, ErrorMessage, Progress, AxisChart } from 'frappe-ui'
 const router = useRouter()
 
 const data = ref(null)
@@ -93,27 +93,32 @@ onUnmounted(() => {
 
     <template v-else-if="data">
       <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <button class="text-left" @click="router.push('/apps')">
-          <Card :title="`${data.cloned_count} / ${data.apps.length}`" subtitle="Apps cloned" />
-        </button>
-        <button class="text-left" @click="router.push('/sites')">
-          <Card :title="`${data.online_count} / ${data.sites.length}`" subtitle="Sites online" />
-        </button>
-        <button class="text-left" @click="router.push('/processes')">
-          <Card :title="`${data.running_count} / ${data.processes.length}`" subtitle="Processes running" />
-        </button>
-        <button class="text-left" @click="router.push('/tasks')">
-          <Card :title="String(data.recent_tasks.length)" subtitle="Recent tasks" />
+        <button
+          v-for="{ count, total, label, route } in [
+            { count: data.cloned_count, total: data.apps.length, label: 'Apps cloned', route: '/apps' },
+            { count: data.online_count, total: data.sites.length, label: 'Sites online', route: '/sites' },
+            { count: data.running_count, total: data.processes.length, label: 'Processes running', route: '/processes' },
+            { count: data.recent_tasks.length, total: null, label: 'Recent tasks', route: '/tasks' },
+          ]"
+          :key="label"
+          class="rounded-lg border border-outline-gray-1 bg-surface-white px-6 py-5 text-left shadow-sm transition-colors hover:bg-surface-gray-1"
+          @click="router.push(route)"
+        >
+          <h2 class="text-xl font-semibold text-ink-gray-9">
+            {{ total !== null ? `${count} / ${total}` : String(count) }}
+          </h2>
+          <p class="mt-1.5 text-base text-ink-gray-5">{{ label }}</p>
         </button>
       </div>
 
-      <Card v-if="stats" title="Server Stats">
-        <template #actions>
+      <div v-if="stats" class="rounded-lg border border-outline-gray-1 bg-surface-white px-6 py-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-xl font-semibold text-ink-gray-9">Server Stats</h2>
           <span class="flex items-center gap-1.5 text-xs text-ink-gray-4">
             <span class="h-2 w-2 animate-pulse rounded-full bg-green-500" />
             Live
           </span>
-        </template>
+        </div>
 
         <div class="flex flex-col gap-6">
           <div class="grid grid-cols-3 gap-6">
@@ -181,7 +186,7 @@ onUnmounted(() => {
 
           <AxisChart v-if="history.length > 1" :config="chartConfig" />
         </div>
-      </Card>
+      </div>
     </template>
   </div>
 </template>
