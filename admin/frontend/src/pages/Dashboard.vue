@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Badge, Card, LoadingText, ErrorMessage, Progress, AxisChart, Button } from 'frappe-ui'
+import { Badge, Card, LoadingText, ErrorMessage, Progress, AxisChart } from 'frappe-ui'
 const router = useRouter()
 
 const data = ref(null)
@@ -72,44 +72,6 @@ const chartConfig = computed(() => ({
   ],
 }))
 
-const taskLoading = ref('')
-const taskError = ref('')
-
-async function runTask(command) {
-  try {
-    const res = await fetch('/api/tasks/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
-    })
-    const d = await res.json()
-    if (d.ok) router.push(`/tasks/${d.task_id}`)
-    else taskError.value = d.error
-  } catch (e) {
-    taskError.value = e.message
-  } finally {
-    taskLoading.value = ''
-  }
-}
-
-async function runUpdate() {
-  taskError.value = ''
-  taskLoading.value = 'update'
-  await runTask('update')
-}
-
-async function setupNginx() {
-  taskError.value = ''
-  taskLoading.value = 'setup-nginx'
-  await runTask('setup-nginx')
-}
-
-async function setupProduction() {
-  taskError.value = ''
-  taskLoading.value = 'setup-production'
-  await runTask('setup-production')
-}
-
 let dashTimer, statsTimer
 
 onMounted(() => {
@@ -130,16 +92,6 @@ onUnmounted(() => {
     <ErrorMessage v-else-if="error" :message="error" />
 
     <template v-else-if="data">
-      <div class="flex items-center justify-between">
-        <h2 class="text-base font-medium text-ink-gray-7">{{ data.summary?.name ?? 'Bench' }}</h2>
-        <div class="flex items-center gap-2">
-          <ErrorMessage :message="taskError" />
-          <Button variant="outline" :loading="taskLoading === 'setup-nginx'" @click="setupNginx">Setup Nginx</Button>
-          <Button variant="outline" :loading="taskLoading === 'setup-production'" @click="setupProduction">Setup Production</Button>
-          <Button variant="outline" :loading="taskLoading === 'update'" @click="runUpdate">Update Bench</Button>
-        </div>
-      </div>
-
       <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
         <button class="text-left" @click="router.push('/apps')">
           <Card :title="`${data.cloned_count} / ${data.apps.length}`" subtitle="Apps cloned" />

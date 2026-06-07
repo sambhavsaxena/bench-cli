@@ -35,6 +35,7 @@ const breadcrumbs = computed(() => {
     { label: 'Binary Logs', route: '/database/binlogs' },
     { label: String(params.name) },
   ]
+  if (path === '/settings') return [{ label: 'Settings' }]
   return [{ label: '' }]
 })
 </script>
@@ -45,6 +46,7 @@ const breadcrumbs = computed(() => {
     <main class="flex-1 overflow-auto bg-surface-white">
       <header class="sticky top-0 z-[10] flex items-center border-b bg-surface-white px-5 py-2.5">
         <Breadcrumbs :items="breadcrumbs" />
+        <div id="header-actions" class="ml-auto flex items-center gap-2" />
       </header>
       <div class="p-6">
         <RouterView />

@@ -1,6 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Button, FormControl, ErrorMessage, LoadingText, Switch } from 'frappe-ui'
+
+const router = useRouter()
 
 const loading = ref(true)
 const loadError = ref('')
@@ -24,8 +27,7 @@ async function load() {
   try {
     const res = await fetch('/api/settings/')
     if (!res.ok) throw new Error(`${res.status}`)
-    const data = await res.json()
-    form.value = data
+    form.value = await res.json()
   } catch (e) {
     loadError.value = e.message
   } finally {
@@ -58,127 +60,143 @@ async function save() {
   }
 }
 
+const taskLoading = ref('')
+const taskError = ref('')
+
+async function runTask(command) {
+  taskError.value = ''
+  try {
+    const res = await fetch('/api/tasks/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
+    })
+    const d = await res.json()
+    if (d.ok) router.push(`/tasks/${d.task_id}`)
+    else taskError.value = d.error
+  } catch (e) {
+    taskError.value = e.message
+  } finally {
+    taskLoading.value = ''
+  }
+}
+
 onMounted(load)
 </script>
 
 <template>
-  <div class="p-6">
-    <div class="max-w-2xl mx-auto flex flex-col gap-6">
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-xl font-semibold text-gray-900">Settings</h1>
-          <p class="text-sm text-gray-500 mt-0.5">Changes are saved to <code class="font-mono">bench.toml</code></p>
-        </div>
-        <div class="flex items-center gap-3">
-          <span v-if="saveSuccess" class="text-sm text-green-600 font-medium">{{ saveSuccess }}</span>
-          <Button variant="solid" :loading="saving" @click="save">Save</Button>
+  <div class="max-w-2xl mx-auto flex flex-col gap-6">
+    <Teleport to="#header-actions">
+      <span v-if="saveSuccess" class="text-sm text-green-600 font-medium">{{ saveSuccess }}</span>
+      <Button variant="solid" :loading="saving" @click="save">Save</Button>
+    </Teleport>
+    <ErrorMessage :message="saveError" />
+
+    <LoadingText v-if="loading" />
+    <ErrorMessage v-else-if="loadError" :message="loadError" />
+
+    <template v-else>
+      <!-- Mode -->
+      <div class="flex flex-col gap-4">
+        <h3 class="text-base font-semibold text-gray-800">Mode</h3>
+        <div class="flex flex-col gap-3">
+          <Switch v-model="form.production.enabled" label="Production Mode" />
+          <div v-if="form.production.enabled" class="flex flex-col gap-3 pl-4 border-l border-gray-200">
+            <Switch v-model="form.production.lightweight" label="Lightweight" />
+          </div>
         </div>
       </div>
 
-      <ErrorMessage :message="saveError" />
+      <div class="border-t border-gray-100" />
 
-      <LoadingText v-if="loading" />
-      <ErrorMessage v-else-if="loadError" :message="loadError" />
-
-      <template v-else>
-        <!-- Mode -->
-        <div class="flex flex-col gap-4">
-          <h3 class="text-base font-semibold text-gray-800">Mode</h3>
-          <div class="flex flex-col gap-3">
-            <Switch v-model="form.production.enabled" label="Production Mode" />
-            <div v-if="form.production.enabled" class="flex flex-col gap-3 pl-4 border-l border-gray-200">
-              <Switch v-model="form.production.lightweight" label="Lightweight" />
-            </div>
-          </div>
+      <!-- Bench -->
+      <div class="flex flex-col gap-4">
+        <h3 class="text-base font-semibold text-gray-800">Bench</h3>
+        <div class="grid grid-cols-2 gap-4">
+          <FormControl label="Name" :modelValue="form.bench.name" disabled />
+          <FormControl label="Python Version" :modelValue="form.bench.python" disabled />
+          <FormControl type="number" label="HTTP Port" v-model="form.bench.http_port" />
+          <FormControl type="number" label="SocketIO Port" v-model="form.bench.socketio_port" />
         </div>
+      </div>
 
-        <div class="border-t border-gray-100" />
+      <div class="border-t border-gray-100" />
 
-        <!-- Bench -->
-        <div class="flex flex-col gap-4">
-          <h3 class="text-base font-semibold text-gray-800">Bench</h3>
-          <div class="grid grid-cols-2 gap-4">
-            <FormControl label="Name" :modelValue="form.bench.name" disabled />
-            <FormControl label="Python Version" :modelValue="form.bench.python" disabled />
-            <FormControl type="number" label="HTTP Port" v-model="form.bench.http_port" />
-            <FormControl type="number" label="SocketIO Port" v-model="form.bench.socketio_port" />
-          </div>
+      <!-- MariaDB -->
+      <div class="flex flex-col gap-4">
+        <h3 class="text-base font-semibold text-gray-800">MariaDB</h3>
+        <div class="grid grid-cols-2 gap-4">
+          <FormControl label="Host" v-model="form.mariadb.host" />
+          <FormControl type="number" label="Port" v-model="form.mariadb.port" />
+          <FormControl label="Admin User" v-model="form.mariadb.admin_user" />
+          <FormControl label="Version" v-model="form.mariadb.version" placeholder="e.g. 10.6" />
+          <FormControl class="col-span-2" label="Socket Path" v-model="form.mariadb.socket_path" placeholder="Leave empty to use TCP" />
         </div>
+      </div>
 
-        <div class="border-t border-gray-100" />
+      <div class="border-t border-gray-100" />
 
-        <!-- MariaDB -->
-        <div class="flex flex-col gap-4">
-          <h3 class="text-base font-semibold text-gray-800">MariaDB</h3>
-          <div class="grid grid-cols-2 gap-4">
-            <FormControl label="Host" v-model="form.mariadb.host" />
-            <FormControl type="number" label="Port" v-model="form.mariadb.port" />
-            <FormControl label="Admin User" v-model="form.mariadb.admin_user" />
-            <FormControl label="Version" v-model="form.mariadb.version" placeholder="e.g. 10.6" />
-            <FormControl
-              class="col-span-2"
-              label="Socket Path"
-              v-model="form.mariadb.socket_path"
-              placeholder="Leave empty to use TCP"
-            />
-          </div>
+      <!-- Redis -->
+      <div class="flex flex-col gap-4">
+        <h3 class="text-base font-semibold text-gray-800">Redis</h3>
+        <div class="grid grid-cols-2 gap-4">
+          <FormControl type="number" label="Cache Port" v-model="form.redis.cache_port" />
+          <FormControl type="number" label="Queue Port" v-model="form.redis.queue_port" />
+          <FormControl type="number" label="SocketIO Port" v-model="form.redis.socketio_port" />
+          <FormControl label="Version" v-model="form.redis.version" placeholder="e.g. 7" />
         </div>
+      </div>
 
-        <div class="border-t border-gray-100" />
+      <div class="border-t border-gray-100" />
 
-        <!-- Redis -->
-        <div class="flex flex-col gap-4">
-          <h3 class="text-base font-semibold text-gray-800">Redis</h3>
-          <div class="grid grid-cols-2 gap-4">
-            <FormControl type="number" label="Cache Port" v-model="form.redis.cache_port" />
-            <FormControl type="number" label="Queue Port" v-model="form.redis.queue_port" />
-            <FormControl type="number" label="SocketIO Port" v-model="form.redis.socketio_port" />
-            <FormControl label="Version" v-model="form.redis.version" placeholder="e.g. 7" />
-          </div>
+      <!-- Workers -->
+      <div class="flex flex-col gap-4">
+        <h3 class="text-base font-semibold text-gray-800">Workers</h3>
+        <div class="grid grid-cols-3 gap-4">
+          <FormControl type="number" label="Default Workers" v-model="form.workers.default" />
+          <FormControl type="number" label="Short Workers" v-model="form.workers.short" />
+          <FormControl type="number" label="Long Workers" v-model="form.workers.long" />
         </div>
+      </div>
 
-        <div class="border-t border-gray-100" />
+      <div class="border-t border-gray-100" />
 
-        <!-- Workers -->
-        <div class="flex flex-col gap-4">
-          <h3 class="text-base font-semibold text-gray-800">Workers</h3>
-          <div class="grid grid-cols-3 gap-4">
-            <FormControl type="number" label="Default Workers" v-model="form.workers.default" />
-            <FormControl type="number" label="Short Workers" v-model="form.workers.short" />
-            <FormControl type="number" label="Long Workers" v-model="form.workers.long" />
-          </div>
+      <!-- Nginx -->
+      <div class="flex flex-col gap-4">
+        <h3 class="text-base font-semibold text-gray-800">Nginx</h3>
+        <Switch v-model="form.production.nginx" label="Manage Nginx" />
+        <div class="grid grid-cols-2 gap-4">
+          <FormControl type="number" label="HTTP Port" v-model="form.nginx.http_port" />
+          <FormControl type="number" label="HTTPS Port" v-model="form.nginx.https_port" />
+          <FormControl label="Worker Processes" v-model="form.nginx.worker_processes" placeholder="auto" />
+          <FormControl label="Client Max Body Size" v-model="form.nginx.client_max_body_size" placeholder="50m" />
+          <FormControl class="col-span-2" label="Config Directory" v-model="form.nginx.config_dir" />
         </div>
+      </div>
 
-        <div class="border-t border-gray-100" />
+      <div class="border-t border-gray-100" />
 
-        <!-- Nginx -->
-        <div class="flex flex-col gap-4">
-          <h3 class="text-base font-semibold text-gray-800">Nginx</h3>
-          <Switch v-model="form.production.nginx" label="Manage Nginx" />
-          <div class="grid grid-cols-2 gap-4">
-            <FormControl type="number" label="HTTP Port" v-model="form.nginx.http_port" />
-            <FormControl type="number" label="HTTPS Port" v-model="form.nginx.https_port" />
-            <FormControl label="Worker Processes" v-model="form.nginx.worker_processes" placeholder="auto" />
-            <FormControl label="Client Max Body Size" v-model="form.nginx.client_max_body_size" placeholder="50m" />
-            <FormControl
-              class="col-span-2"
-              label="Config Directory"
-              v-model="form.nginx.config_dir"
-            />
-          </div>
+      <!-- Let's Encrypt -->
+      <div class="flex flex-col gap-4">
+        <h3 class="text-base font-semibold text-gray-800">Let's Encrypt</h3>
+        <div class="grid grid-cols-2 gap-4">
+          <FormControl label="Email" v-model="form.letsencrypt.email" placeholder="you@example.com" />
+          <FormControl label="Webroot Path" v-model="form.letsencrypt.webroot_path" />
         </div>
+      </div>
 
-        <div class="border-t border-gray-100" />
+      <div class="border-t border-gray-100" />
 
-        <!-- Let's Encrypt -->
-        <div class="flex flex-col gap-4">
-          <h3 class="text-base font-semibold text-gray-800">Let's Encrypt</h3>
-          <div class="grid grid-cols-2 gap-4">
-            <FormControl label="Email" v-model="form.letsencrypt.email" placeholder="you@example.com" />
-            <FormControl label="Webroot Path" v-model="form.letsencrypt.webroot_path" />
-          </div>
+      <!-- Setup -->
+      <div class="flex flex-col gap-4">
+        <h3 class="text-base font-semibold text-gray-800">Setup</h3>
+        <ErrorMessage :message="taskError" />
+        <div class="flex flex-wrap gap-2">
+          <Button variant="outline" :loading="taskLoading === 'setup-nginx'" @click="taskLoading = 'setup-nginx'; runTask('setup-nginx')">Setup Nginx</Button>
+          <Button variant="outline" :loading="taskLoading === 'setup-production'" @click="taskLoading = 'setup-production'; runTask('setup-production')">Setup Production</Button>
+          <Button variant="outline" :loading="taskLoading === 'update'" @click="taskLoading = 'update'; runTask('update')">Update Bench</Button>
         </div>
-      </template>
-    </div>
+      </div>
+    </template>
   </div>
 </template>
