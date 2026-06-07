@@ -91,12 +91,9 @@ class SetupProductionCommand:
         SetupLetsEncryptCommand(self.bench).run()
 
     def _build_admin_for_production(self) -> None:
-        from bench_cli.commands.admin import download_admin_frontend, BuildAdminCommand, _cli_root
+        from bench_cli.commands.admin import BuildAdminCommand
 
-        cli_root = _cli_root()
-        if not download_admin_frontend(cli_root):
-            print("Download failed, building from source...")
-            BuildAdminCommand().run()
+        BuildAdminCommand().run()
 
     def _print_summary(self) -> None:
         from bench_cli.managers.nginx_manager import NginxManager

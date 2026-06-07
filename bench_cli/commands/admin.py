@@ -45,7 +45,16 @@ def download_admin_frontend(cli_root: Path) -> bool:
 
 
 class BuildAdminCommand:
+    def __init__(self, force_build: bool = False) -> None:
+        self.force_build = force_build
+
     def run(self) -> None:
+        if not self.force_build and download_admin_frontend(_cli_root()):
+            return
+        if self.force_build:
+            print("Skipping download, building from source...")
+        else:
+            print("Download failed, building from source...")
         frontend = self._find_frontend()
         print(f"Building admin frontend at {frontend}...")
         if not (frontend / "node_modules").exists():
