@@ -1,9 +1,20 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Button, FormControl, ErrorMessage, LoadingText, Switch } from 'frappe-ui'
+import { Button, FormControl, ErrorMessage, LoadingText, Switch, Select, useTheme } from 'frappe-ui'
 
 const router = useRouter()
+
+const { currentTheme, setTheme } = useTheme()
+const theme = computed({
+  get: () => currentTheme.value,
+  set: (val) => setTheme(val),
+})
+const THEME_OPTIONS = [
+  { label: 'Light', value: 'light' },
+  { label: 'Dark', value: 'dark' },
+  { label: 'Auto (System)', value: 'system' },
+]
 
 const loading = ref(true)
 const loadError = ref('')
@@ -125,22 +136,30 @@ onMounted(load)
     <ErrorMessage v-else-if="loadError" :message="loadError" />
 
     <template v-else>
+      <!-- Appearance -->
+      <div class="flex flex-col gap-4">
+        <h3 class="text-base font-semibold text-ink-gray-8">Appearance</h3>
+        <Select label="Theme" :options="THEME_OPTIONS" v-model="theme" class="w-40" />
+      </div>
+
+      <div class="border-t border-outline-gray-1" />
+
       <!-- Mode -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-gray-800">Mode</h3>
+        <h3 class="text-base font-semibold text-ink-gray-8">Mode</h3>
         <div class="flex flex-col gap-3">
           <Switch v-model="form.production.enabled" label="Production Mode" />
-          <div v-if="form.production.enabled" class="flex flex-col gap-3 pl-4 border-l border-gray-200">
+          <div v-if="form.production.enabled" class="flex flex-col gap-3 pl-4 border-l border-outline-gray-2">
             <Switch v-model="form.production.lightweight" label="Lightweight" />
           </div>
         </div>
       </div>
 
-      <div class="border-t border-gray-100" />
+      <div class="border-t border-outline-gray-1" />
 
       <!-- Bench -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-gray-800">Bench</h3>
+        <h3 class="text-base font-semibold text-ink-gray-8">Bench</h3>
         <div class="grid grid-cols-2 gap-4">
           <FormControl label="Name" :modelValue="form.bench.name" disabled />
           <FormControl label="Python Version" :modelValue="form.bench.python" disabled />
@@ -149,11 +168,11 @@ onMounted(load)
         </div>
       </div>
 
-      <div class="border-t border-gray-100" />
+      <div class="border-t border-outline-gray-1" />
 
       <!-- MariaDB -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-gray-800">MariaDB</h3>
+        <h3 class="text-base font-semibold text-ink-gray-8">MariaDB</h3>
         <div class="grid grid-cols-2 gap-4">
           <FormControl label="Host" v-model="form.mariadb.host" />
           <FormControl type="number" label="Port" v-model="form.mariadb.port" />
@@ -163,11 +182,11 @@ onMounted(load)
         </div>
       </div>
 
-      <div class="border-t border-gray-100" />
+      <div class="border-t border-outline-gray-1" />
 
       <!-- Redis -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-gray-800">Redis</h3>
+        <h3 class="text-base font-semibold text-ink-gray-8">Redis</h3>
         <div class="grid grid-cols-2 gap-4">
           <FormControl type="number" label="Cache Port" v-model="form.redis.cache_port" />
           <FormControl type="number" label="Queue Port" v-model="form.redis.queue_port" />
@@ -176,11 +195,11 @@ onMounted(load)
         </div>
       </div>
 
-      <div class="border-t border-gray-100" />
+      <div class="border-t border-outline-gray-1" />
 
       <!-- Workers -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-gray-800">Workers</h3>
+        <h3 class="text-base font-semibold text-ink-gray-8">Workers</h3>
         <div class="grid grid-cols-3 gap-4">
           <FormControl type="number" label="Default Workers" v-model="form.workers.default" />
           <FormControl type="number" label="Short Workers" v-model="form.workers.short" />
@@ -188,11 +207,11 @@ onMounted(load)
         </div>
       </div>
 
-      <div class="border-t border-gray-100" />
+      <div class="border-t border-outline-gray-1" />
 
       <!-- Nginx -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-gray-800">Nginx</h3>
+        <h3 class="text-base font-semibold text-ink-gray-8">Nginx</h3>
         <Switch v-model="form.production.nginx" label="Manage Nginx" />
         <div class="grid grid-cols-2 gap-4">
           <FormControl type="number" label="HTTP Port" v-model="form.nginx.http_port" />
@@ -203,22 +222,22 @@ onMounted(load)
         </div>
       </div>
 
-      <div class="border-t border-gray-100" />
+      <div class="border-t border-outline-gray-1" />
 
       <!-- Let's Encrypt -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-gray-800">Let's Encrypt</h3>
+        <h3 class="text-base font-semibold text-ink-gray-8">Let's Encrypt</h3>
         <div class="grid grid-cols-2 gap-4">
           <FormControl label="Email" v-model="form.letsencrypt.email" placeholder="you@example.com" />
           <FormControl label="Webroot Path" v-model="form.letsencrypt.webroot_path" />
         </div>
       </div>
 
-      <div class="border-t border-gray-100" />
+      <div class="border-t border-outline-gray-1" />
 
       <!-- Setup -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-gray-800">Setup</h3>
+        <h3 class="text-base font-semibold text-ink-gray-8">Setup</h3>
         <ErrorMessage :message="taskError" />
         <div class="flex flex-wrap gap-2">
           <Button variant="outline" :loading="taskLoading === 'setup-nginx'" @click="taskLoading = 'setup-nginx'; runTask('setup-nginx')">Setup Nginx</Button>

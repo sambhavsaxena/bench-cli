@@ -2,7 +2,9 @@
 import { ref, onMounted } from 'vue'
 import AppLayout from './components/AppLayout.vue'
 import Login from './pages/Login.vue'
-import { Alert } from 'frappe-ui'
+import { Alert, useTheme } from 'frappe-ui'
+
+const { initializeTheme } = useTheme()
 
 const adminEnabled = ref(true)
 const adminError = ref('')
@@ -21,6 +23,7 @@ async function loadStatus() {
 }
 
 onMounted(async () => {
+  initializeTheme()
   try {
     await loadStatus()
   } catch {

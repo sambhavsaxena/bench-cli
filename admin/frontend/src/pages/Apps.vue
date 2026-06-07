@@ -372,7 +372,7 @@ onMounted(() => { loadApps(); loadRegistry(); loadUpdateStatus() })
         <div v-if="addMode === 'picker'">
           <TextInput v-model="registrySearch" placeholder="Search apps…" class="mb-3" />
           <div class="max-h-52 overflow-y-auto mb-3">
-            <div v-if="!filteredRegistry.length" class="p-4 text-gray-400">No apps found</div>
+            <div v-if="!filteredRegistry.length" class="p-4 text-ink-gray-4">No apps found</div>
             <button
               v-for="a in filteredRegistry"
               :key="a.name"

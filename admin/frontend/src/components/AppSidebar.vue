@@ -88,7 +88,7 @@ onUnmounted(() => clearInterval(pollTimer))
       <SidebarItem :label="item.label" :icon="item.icon" :to="item.to" :isActive="isActive(item.to)">
         <template v-if="item.to === '/tasks' && runningCount > 0" #suffix>
           <span
-            class="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-gray-800 px-1 text-[10px] font-bold text-white">
+            class="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-ink-gray-8 px-1 text-[10px] font-bold text-surface-white">
             {{ runningCount }}
           </span>
         </template>
