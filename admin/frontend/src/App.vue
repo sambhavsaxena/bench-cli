@@ -3,7 +3,6 @@ import { ref, onMounted } from 'vue'
 import AppLayout from './components/AppLayout.vue'
 import Login from './pages/Login.vue'
 import Setup from './pages/Setup.vue'
-import { Alert } from 'frappe-ui'
 import { Alert, useTheme } from 'frappe-ui'
 
 const { initializeTheme } = useTheme()
