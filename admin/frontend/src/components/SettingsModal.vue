@@ -35,11 +35,15 @@ const BASE_TABS = [
   { key: 'updates', label: 'Updates' },
 ]
 const isLinux = ref(false)
-const TABS = computed(() =>
-  isLinux.value
+const TABS = computed(() => {
+  let tabs = isLinux.value
     ? [...BASE_TABS, { key: 'volume', label: 'ZFS Volume' }]
     : BASE_TABS
+
+    return tabs
+}
 )
+
 const activeTab = ref('bench')
 
 const loading = ref(true)
@@ -345,8 +349,7 @@ watch(() => props.modelValue, (val) => {
                     <FormControl label="MariaDB Reservation" v-model="form.volume.mariadb_reservation" />
                     <FormControl label="MariaDB Quota" v-model="form.volume.mariadb_quota" />
                   </div>
-                  <FormControl label="MariaDB Data Directory" v-model="form.volume.mariadb_data_dir" />
-                  <Switch v-model="form.volume.snapshots_enabled" label="Enable Snapshots" />
+<Switch v-model="form.volume.snapshots_enabled" label="Enable Snapshots" />
                 </template>
                 <p v-else class="text-sm text-ink-gray-5">
                   ZFS volume management was not enabled during setup.

@@ -35,6 +35,143 @@ def _needs_restart(old: dict, new: dict) -> bool:
     return any(old.get(s, {}).get(k) != new.get(s, {}).get(k) for s, k in _RESTART_KEYS)
 
 
+def _restart_trigger_values(config: BenchConfig) -> dict:
+    return {
+        "bench": {"python": config.python_version, "http_port": config.http_port, "socketio_port": config.socketio_port},
+        "mariadb": {"host": config.mariadb.host, "port": config.mariadb.port, "admin_user": config.mariadb.admin_user, "socket_path": config.mariadb.socket_path},
+        "redis": {"cache_port": config.redis.cache_port, "queue_port": config.redis.queue_port, "socketio_port": config.redis.socketio_port},
+        "workers": {"default": config.workers.default_count, "short": config.workers.short_count, "long": config.workers.long_count},
+        "production": {"process_manager": config.production.process_manager},
+    }
+
+
+def _zfs_quota_values(config: BenchConfig) -> dict:
+    v = config.volume
+    return {
+        "benches_quota": v.benches.quota,
+        "benches_reservation": v.benches.reservation,
+        "mariadb_quota": v.mariadb.quota,
+        "mariadb_reservation": v.mariadb.reservation,
+    }
+
+
+def _patch_config(config: BenchConfig, data: dict) -> str | None:
+    if b := data.get("bench"):
+        if "http_port" in b:
+            config.http_port = int(b["http_port"])
+        if "socketio_port" in b:
+            config.socketio_port = int(b["socketio_port"])
+
+    if m := data.get("mariadb"):
+        config.mariadb.host = str(m.get("host", config.mariadb.host))
+        config.mariadb.port = int(m.get("port", config.mariadb.port))
+        config.mariadb.admin_user = str(m.get("admin_user", config.mariadb.admin_user))
+        config.mariadb.socket_path = str(m.get("socket_path", config.mariadb.socket_path))
+
+    if r := data.get("redis"):
+        config.redis.cache_port = int(r.get("cache_port", config.redis.cache_port))
+        config.redis.queue_port = int(r.get("queue_port", config.redis.queue_port))
+        config.redis.socketio_port = int(r.get("socketio_port", config.redis.socketio_port))
+
+    if w := data.get("workers"):
+        config.workers.default_count = int(w.get("default", config.workers.default_count))
+        config.workers.short_count = int(w.get("short", config.workers.short_count))
+        config.workers.long_count = int(w.get("long", config.workers.long_count))
+
+    if n := data.get("nginx"):
+        config.nginx.http_port = int(n.get("http_port", config.nginx.http_port))
+        config.nginx.https_port = int(n.get("https_port", config.nginx.https_port))
+        if "config_dir" in n:
+            config.nginx.config_dir = Path(str(n["config_dir"]))
+        config.nginx.worker_processes = str(n.get("worker_processes", config.nginx.worker_processes))
+        config.nginx.client_max_body_size = str(n.get("client_max_body_size", config.nginx.client_max_body_size))
+
+    if le := data.get("letsencrypt"):
+        config.letsencrypt.email = str(le.get("email", config.letsencrypt.email))
+        if "webroot_path" in le:
+            config.letsencrypt.webroot_path = Path(str(le["webroot_path"]))
+
+    if v := data.get("volume"):
+        vol = config.volume
+        vol.benches.reservation = str(v.get("benches_reservation", vol.benches.reservation))
+        vol.benches.quota = str(v.get("benches_quota", vol.benches.quota))
+        vol.mariadb.reservation = str(v.get("mariadb_reservation", vol.mariadb.reservation))
+        vol.mariadb.quota = str(v.get("mariadb_quota", vol.mariadb.quota))
+        vol.snapshots.enabled = bool(v.get("snapshots_enabled", vol.snapshots.enabled))
+
+    if p := data.get("production"):
+        if "process_manager" in p:
+            pm = str(p["process_manager"])
+            if pm not in ("none", "supervisor", "systemd"):
+                return "process_manager must be none, supervisor, or systemd"
+            config.production.process_manager = pm
+        config.production.nginx = bool(p.get("nginx", config.production.nginx))
+
+    return first_error(
+        validate_port(config.http_port, "HTTP Port"),
+        validate_port(config.socketio_port, "SocketIO Port"),
+        validate_port(config.mariadb.port, "MariaDB Port"),
+        validate_port(config.redis.cache_port, "Redis Cache Port"),
+        validate_port(config.redis.queue_port, "Redis Queue Port"),
+        validate_port(config.redis.socketio_port, "Redis SocketIO Port"),
+        validate_port(config.nginx.http_port, "Nginx HTTP Port"),
+        validate_port(config.nginx.https_port, "Nginx HTTPS Port"),
+        validate_worker_count(config.workers.default_count, "Default workers"),
+        validate_worker_count(config.workers.short_count, "Short workers"),
+        validate_worker_count(config.workers.long_count, "Long workers"),
+        validate_email(config.letsencrypt.email),
+    )
+
+
+# ── ZFS application ───────────────────────────────────────────────────────────
+
+
+def _validate_volume_quota(config: BenchConfig, old: dict) -> str | None:
+    from bench_cli.managers.volume_manager import VolumeManager
+
+    vol = config.volume
+    if not vol.enabled:
+        return None
+    manager = VolumeManager(vol)
+    new = _zfs_quota_values(config)
+    for dataset, key in [(vol.benches_dataset, "benches_quota"), (vol.mariadb_dataset, "mariadb_quota")]:
+        if new[key] != old[key]:
+            if err := manager.validate_quota(dataset, new[key]):
+                return err
+    return None
+
+
+def _apply_dataset_zfs(manager, dataset: str, q_key: str, r_key: str, old: dict, new: dict) -> str | None:
+    from bench_cli.exceptions import VolumeError
+
+    if not manager.dataset_exists(dataset):
+        return None
+    try:
+        if new[q_key] != old[q_key]:
+            manager.set_quota(dataset, new[q_key])
+        if new[r_key] != old[r_key]:
+            manager.set_reservation(dataset, new[r_key])
+    except VolumeError as e:
+        return str(e)
+    return None
+
+
+def _apply_volume_zfs(config: BenchConfig, old: dict) -> str | None:
+    from bench_cli.managers.volume_manager import VolumeManager
+
+    vol = config.volume
+    if not vol.enabled:
+        return None
+    manager = VolumeManager(vol)
+    new = _zfs_quota_values(config)
+    return _apply_dataset_zfs(manager, vol.benches_dataset, "benches_quota", "benches_reservation", old, new) or _apply_dataset_zfs(
+        manager, vol.mariadb_dataset, "mariadb_quota", "mariadb_reservation", old, new
+    )
+
+
+# ── Process restart ───────────────────────────────────────────────────────────
+
+
 def _non_admin_supervisor_programs(conf: Path, bench_name: str) -> list[str]:
     result = subprocess.run(
         ["supervisorctl", "-c", str(conf), "status", f"{bench_name}:*"],
@@ -94,14 +231,7 @@ def _do_restart(bench_root: Path, config: BenchConfig) -> tuple[bool, str | None
     return False, None
 
 
-def _config_snapshot(config: BenchConfig) -> dict:
-    return {
-        "bench": {"python": config.python_version, "http_port": config.http_port, "socketio_port": config.socketio_port},
-        "mariadb": {"host": config.mariadb.host, "port": config.mariadb.port, "admin_user": config.mariadb.admin_user, "socket_path": config.mariadb.socket_path},
-        "redis": {"cache_port": config.redis.cache_port, "queue_port": config.redis.queue_port, "socketio_port": config.redis.socketio_port},
-        "workers": {"default": config.workers.default_count, "short": config.workers.short_count, "long": config.workers.long_count},
-        "production": {"process_manager": config.production.process_manager},
-    }
+# ── Response builder ──────────────────────────────────────────────────────────
 
 
 def _build_settings_response(config: BenchConfig) -> dict:
@@ -129,122 +259,7 @@ def _build_settings_response(config: BenchConfig) -> dict:
     }
 
 
-class SettingsApplier:
-    def __init__(self, config: BenchConfig, data: dict) -> None:
-        self.config = config
-        self.data = data
-
-    def apply(self) -> str | None:
-        self._apply_bench()
-        self._apply_mariadb()
-        self._apply_redis()
-        self._apply_workers()
-        self._apply_nginx()
-        self._apply_letsencrypt()
-        self._apply_volume()
-        return self._apply_production() or self._validate()
-
-    def _apply_bench(self) -> None:
-        d = self.data.get("bench", {})
-        if "python" in d:
-            self.config.python_version = str(d["python"])
-        if "http_port" in d:
-            self.config.http_port = int(d["http_port"])
-        if "socketio_port" in d:
-            self.config.socketio_port = int(d["socketio_port"])
-
-    def _apply_mariadb(self) -> None:
-        d = self.data.get("mariadb", {})
-        if not d:
-            return
-        m = self.config.mariadb
-        m.host = str(d.get("host", m.host))
-        m.port = int(d.get("port", m.port))
-        m.admin_user = str(d.get("admin_user", m.admin_user))
-        m.socket_path = str(d.get("socket_path", m.socket_path))
-        m.version = str(d.get("version", "")).strip() or None
-
-    def _apply_redis(self) -> None:
-        d = self.data.get("redis", {})
-        if not d:
-            return
-        r = self.config.redis
-        r.cache_port = int(d.get("cache_port", r.cache_port))
-        r.queue_port = int(d.get("queue_port", r.queue_port))
-        r.socketio_port = int(d.get("socketio_port", r.socketio_port))
-        r.version = str(d.get("version", "")).strip() or None
-
-    def _apply_workers(self) -> None:
-        d = self.data.get("workers", {})
-        if not d:
-            return
-        w = self.config.workers
-        w.default_count = int(d.get("default", w.default_count))
-        w.short_count = int(d.get("short", w.short_count))
-        w.long_count = int(d.get("long", w.long_count))
-
-    def _apply_nginx(self) -> None:
-        d = self.data.get("nginx", {})
-        if not d:
-            return
-        n = self.config.nginx
-        n.http_port = int(d.get("http_port", n.http_port))
-        n.https_port = int(d.get("https_port", n.https_port))
-        if "config_dir" in d:
-            n.config_dir = Path(str(d["config_dir"]))
-        n.worker_processes = str(d.get("worker_processes", n.worker_processes))
-        n.client_max_body_size = str(d.get("client_max_body_size", n.client_max_body_size))
-
-    def _apply_letsencrypt(self) -> None:
-        d = self.data.get("letsencrypt", {})
-        if not d:
-            return
-        le = self.config.letsencrypt
-        le.email = str(d.get("email", le.email))
-        if "webroot_path" in d:
-            le.webroot_path = Path(str(d["webroot_path"]))
-
-    def _apply_volume(self) -> None:
-        d = self.data.get("volume", {})
-        if not d:
-            return
-        vol = self.config.volume
-        vol.benches.reservation = str(d.get("benches_reservation", vol.benches.reservation))
-        vol.benches.quota = str(d.get("benches_quota", vol.benches.quota))
-        vol.mariadb.reservation = str(d.get("mariadb_reservation", vol.mariadb.reservation))
-        vol.mariadb.quota = str(d.get("mariadb_quota", vol.mariadb.quota))
-        vol.mariadb.data_dir = str(d.get("mariadb_data_dir", vol.mariadb.data_dir))
-        vol.snapshots.enabled = bool(d.get("snapshots_enabled", vol.snapshots.enabled))
-
-    def _apply_production(self) -> str | None:
-        d = self.data.get("production", {})
-        if not d:
-            return None
-        p = self.config.production
-        if "process_manager" in d:
-            pm = str(d["process_manager"])
-            if pm not in ("none", "supervisor", "systemd"):
-                return "process_manager must be none, supervisor, or systemd"
-            p.process_manager = pm
-        p.nginx = bool(d.get("nginx", p.nginx))
-        return None
-
-    def _validate(self) -> str | None:
-        c = self.config
-        return first_error(
-            validate_port(c.http_port, "HTTP Port"),
-            validate_port(c.socketio_port, "SocketIO Port"),
-            validate_port(c.mariadb.port, "MariaDB Port"),
-            validate_port(c.redis.cache_port, "Redis Cache Port"),
-            validate_port(c.redis.queue_port, "Redis Queue Port"),
-            validate_port(c.redis.socketio_port, "Redis SocketIO Port"),
-            validate_port(c.nginx.http_port, "Nginx HTTP Port"),
-            validate_port(c.nginx.https_port, "Nginx HTTPS Port"),
-            validate_worker_count(c.workers.default_count, "Default workers"),
-            validate_worker_count(c.workers.short_count, "Short workers"),
-            validate_worker_count(c.workers.long_count, "Long workers"),
-            validate_email(c.letsencrypt.email),
-        )
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 
 @settings_bp.route("/")
@@ -266,9 +281,10 @@ def update_settings():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
-    old_snapshot = _config_snapshot(config)
-    err = SettingsApplier(config, data).apply()
-    if err:
+    old_restart = _restart_trigger_values(config)
+    old_zfs = _zfs_quota_values(config)
+
+    if err := _patch_config(config, data):
         return jsonify({"ok": False, "error": err}), 400
 
     try:
@@ -276,17 +292,22 @@ def update_settings():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
+    if vol_err := _validate_volume_quota(config, old_zfs):
+        return jsonify({"ok": False, "error": vol_err}), 400
+
     try:
         (bench_root / "bench.toml").write_text(bench_config_to_toml(config))
     except Exception as e:
         return jsonify({"ok": False, "error": f"Failed to write config: {e}"}), 500
 
+    zfs_error = _apply_volume_zfs(config, old_zfs)
+
     restarted, restart_error = False, None
-    if _needs_restart(old_snapshot, _config_snapshot(config)):
+    if _needs_restart(old_restart, _restart_trigger_values(config)):
         try:
             _regenerate_configs(bench_root, config)
         except Exception as e:
             return jsonify({"ok": False, "error": f"Failed to regenerate configs: {e}"}), 500
         restarted, restart_error = _do_restart(bench_root, config)
 
-    return jsonify({"ok": True, "restarted": restarted, "restart_error": restart_error})
+    return jsonify({"ok": True, "restarted": restarted, "restart_error": restart_error, "zfs_error": zfs_error})
