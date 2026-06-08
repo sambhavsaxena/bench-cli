@@ -90,7 +90,10 @@ def stream_task(task_id: str):
 
 
 def _read_defaults(bench_root: Path) -> dict:
-    result = {"bench_name": bench_root.name, **BenchTomlBuilder.DEFAULTS}
+    from bench_cli.platform import is_linux
+    from admin.backend.tasks.manager.task_reader import TaskReader
+
+    result = {"bench_name": bench_root.name, "is_linux": is_linux(), **BenchTomlBuilder.DEFAULTS}
     toml_path = bench_root / "bench.toml"
     if toml_path.exists():
         try:
@@ -99,6 +102,14 @@ def _read_defaults(bench_root: Path) -> dict:
                 result["bench_name"] = bench_root.name
         except Exception:
             pass
+
+    try:
+        tasks = TaskReader(bench_root).list_tasks()
+        running = next((t for t in tasks if t.command == "bench-init" and t.status == "running"), None)
+        result["running_init_task_id"] = running.task_id if running else None
+    except Exception:
+        result["running_init_task_id"] = None
+
     return result
 
 

@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Button, FormControl, FormLabel, Password, Switch, ErrorMessage } from 'frappe-ui'
-import AdvancedSetup from '../components/AdvancedSetup.vue'
+import { Button, FormControl, FormLabel, Password, Switch, ErrorMessage, TextInput } from 'frappe-ui'
 import TerminalOutput from '../components/TerminalOutput.vue'
 import { processLine } from '../utils/ansi.js'
 
@@ -14,6 +13,7 @@ const taskLines = ref([])
 const taskStreaming = ref(false)
 const terminal = ref(null)
 const benchName = ref('')
+const isLinux = ref(true)
 
 const form = ref({
   python: '3.14',
@@ -41,8 +41,10 @@ const form = ref({
 
 const siteForm = ref({ name: 'site1.localhost', admin_password: 'admin' })
 
-const configSteps = ['passwords', 'customize', 'volume']
-const stepNumber = computed(() => configSteps.indexOf(step.value) + 1)
+const configSteps = computed(() =>
+  isLinux.value ? ['passwords', 'customize', 'volume'] : ['passwords', 'customize']
+)
+const stepNumber = computed(() => configSteps.value.indexOf(step.value) + 1)
 const isConfiguring = computed(() => stepNumber.value > 0)
 const isTerminal = computed(() => step.value === 'running' || step.value === 'site-running')
 const isWide = computed(() => isTerminal.value)
@@ -68,8 +70,13 @@ async function loadConfig() {
     const res = await fetch('/api/setup/config')
     const data = await res.json()
     benchName.value = data.bench_name || ''
+    isLinux.value = data.is_linux !== false
     for (const key of Object.keys(form.value)) {
       if (data[key] !== undefined) form.value[key] = data[key]
+    }
+    if (data.running_init_task_id) {
+      step.value = 'running'
+      streamTask(`/api/setup/stream/${data.running_init_task_id}`, onInitDone)
     }
   } catch {}
 }
@@ -109,12 +116,12 @@ function nextStep() {
     return
   }
   error.value = ''
-  step.value = configSteps[configSteps.indexOf(step.value) + 1]
+  step.value = configSteps.value[configSteps.value.indexOf(step.value) + 1]
 }
 
 function prevStep() {
   error.value = ''
-  step.value = configSteps[configSteps.indexOf(step.value) - 1]
+  step.value = configSteps.value[configSteps.value.indexOf(step.value) - 1]
 }
 
 async function saveConfig() {
@@ -188,7 +195,7 @@ function onSiteDone(success) {
 
 function backToConfig() {
   error.value = ''
-  step.value = step.value === 'site-running' ? 'create-site' : 'volume'
+  step.value = step.value === 'site-running' ? 'create-site' : configSteps.value[configSteps.value.length - 1]
 }
 </script>
 
@@ -229,7 +236,29 @@ function backToConfig() {
         <div v-else-if="step === 'customize'" class="flex flex-col gap-4">
           <FormControl label="Python version" v-model="form.python" placeholder="3.14" />
           <FormControl label="Frappe branch" v-model="form.app_branch" placeholder="version-16" />
-          <AdvancedSetup v-model="form" />
+          <FormControl label="Frappe repository" v-model="form.app_repo" />
+          <div class="grid grid-cols-3 gap-2">
+            <FormControl label="HTTP port" v-model="form.http_port" type="number" />
+            <FormControl label="Socket.IO port" v-model="form.socketio_port" type="number" />
+            <FormControl label="Redis port" v-model="form.redis_port" type="number" />
+          </div>
+          <div class="space-y-1.5">
+            <FormLabel label="Workers" />
+            <div class="grid grid-cols-3 gap-2">
+              <div class="space-y-1">
+                <FormLabel label="Default" />
+                <TextInput v-model="form.workers_default" type="number" />
+              </div>
+              <div class="space-y-1">
+                <FormLabel label="Short" />
+                <TextInput v-model="form.workers_short" type="number" />
+              </div>
+              <div class="space-y-1">
+                <FormLabel label="Long" />
+                <TextInput v-model="form.workers_long" type="number" />
+              </div>
+            </div>
+          </div>
           <ErrorMessage v-if="error" :message="error" />
         </div>
 
@@ -275,7 +304,7 @@ function backToConfig() {
 
       <!-- Footer -->
       <div v-if="!isTerminal || error" class="flex gap-2 border-t border-outline-gray-2 px-5 py-4">
-        <Button v-if="step === 'customize' || step === 'volume'" variant="subtle" class="flex-1" @click="prevStep">
+        <Button v-if="stepNumber > 1 && isConfiguring" variant="subtle" class="flex-1" @click="prevStep">
           Back
         </Button>
         <Button v-if="isTerminal && error" variant="subtle" class="w-full" @click="backToConfig">
@@ -284,10 +313,10 @@ function backToConfig() {
         <Button v-else-if="step === 'passwords'" variant="solid" class="w-full" @click="nextStep">
           Next
         </Button>
-        <Button v-else-if="step === 'customize'" variant="solid" class="flex-1" @click="nextStep">
+        <Button v-else-if="step !== configSteps[configSteps.length - 1] && isConfiguring" variant="solid" class="flex-1" @click="nextStep">
           Next
         </Button>
-        <Button v-else-if="step === 'volume'" variant="solid" :loading="loading" class="flex-1" @click="initialize">
+        <Button v-else-if="isConfiguring" variant="solid" :loading="loading" class="flex-1" @click="initialize">
           Initialize
         </Button>
         <template v-else-if="step === 'create-site'">
