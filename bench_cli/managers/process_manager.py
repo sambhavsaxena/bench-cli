@@ -63,9 +63,10 @@ class ProcessManager:
     def start(self) -> None:
         if not self.is_configured():
             raise BenchError(f"Procfile not found at {self.procfile_path}. Run 'bench init' first.")
+        self.generate_config()
         self.pid_file.write_text(str(os.getpid()))
         try:
-            self._run_procfile()
+            self._run_processes(self._process_definitions())
         finally:
             self.pid_file.unlink(missing_ok=True)
             self._cleanup_proc_pid_files()
@@ -91,9 +92,7 @@ class ProcessManager:
 
     # ── Procfile runner ─────────────────────────────────────────────────────
 
-    def _run_procfile(self) -> None:
-        entries = self._parse_procfile()
-
+    def _run_processes(self, defs: List[ProcessDefinition]) -> None:
         original_sigterm = signal.getsignal(signal.SIGTERM)
         original_sigint = signal.getsignal(signal.SIGINT)
 
@@ -104,18 +103,18 @@ class ProcessManager:
         signal.signal(signal.SIGTERM, _stop)
         signal.signal(signal.SIGINT, _stop)
 
-        for i, (name, command) in enumerate(entries):
+        for i, pd in enumerate(defs):
             proc = subprocess.Popen(
-                command,
+                pd.command,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 preexec_fn=os.setsid,
             )
             color = _COLORS[i % len(_COLORS)]
-            self._procs[name] = proc
-            (self.bench.pids_path / f"{name}.pid").write_text(str(proc.pid))
-            threading.Thread(target=self._stream, args=(name, proc, color), daemon=True).start()
+            self._procs[pd.name] = proc
+            (self.bench.pids_path / f"{pd.name}.pid").write_text(str(proc.pid))
+            threading.Thread(target=self._stream, args=(pd.name, proc, color), daemon=True).start()
 
         while not self._stopping:
             for name, proc in list(self._procs.items()):
@@ -129,16 +128,6 @@ class ProcessManager:
         self._stop_all()
         signal.signal(signal.SIGTERM, original_sigterm)
         signal.signal(signal.SIGINT, original_sigint)
-
-    def _parse_procfile(self) -> list[tuple[str, str]]:
-        entries = []
-        for line in self.procfile_path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            name, _, command = line.partition(":")
-            entries.append((name.strip(), command.strip()))
-        return entries
 
     def _stream(self, name: str, proc: subprocess.Popen, color: str) -> None:
         assert proc.stdout is not None

@@ -252,11 +252,10 @@ def test_honcho_start_writes_per_process_pid_files(tmp_path: Path) -> None:
 
     with patch("bench_cli.managers.process_manager.subprocess.Popen", side_effect=fake_popen):
         with patch.object(process_manager, "_stop_all"):
-            entries = process_manager._parse_procfile()
-            for name, command in entries:
-                proc = fake_popen(command)
-                process_manager._procs[name] = proc
-                (bench.pids_path / f"{name}.pid").write_text(str(proc.pid))
+            for pd in process_manager._process_definitions():
+                proc = fake_popen(pd.command)
+                process_manager._procs[pd.name] = proc
+                (bench.pids_path / f"{pd.name}.pid").write_text(str(proc.pid))
 
     for name in process_manager._procs:
         pid_file = bench.pids_path / f"{name}.pid"
