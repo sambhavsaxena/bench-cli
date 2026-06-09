@@ -386,7 +386,7 @@ onMounted(() => { loadApps(); loadRegistry(); loadUpdateStatus() })
                 <span v-else class="font-bold text-white">{{ (a.title || a.name)[0].toUpperCase() }}</span>
               </div>
               <div class="text-left flex-1 min-w-0">
-                <div class="font-medium text-sm">{{ a.title || a.name }}</div>
+                <div class="font-medium text-sm text-ink-gray-9">{{ a.title || a.name }}</div>
                 <div class="text-xs text-ink-gray-4 truncate">{{ a.description }}</div>
               </div>
               <div v-if="a.branches?.length" class="flex gap-1 shrink-0">
