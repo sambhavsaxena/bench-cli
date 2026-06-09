@@ -130,7 +130,7 @@ def test_supervisor_render_program_extracts_cd_prefix(tmp_path: Path) -> None:
     mgr = _make_supervisor_manager(tmp_path)
     pd = ProcessDefinition(
         name="web",
-        command=f"cd /sites && /env/bin/python -m frappe.utils.bench_helper frappe serve",
+        command="cd /sites && /env/bin/python -m frappe.utils.bench_helper frappe serve",
         log_file=tmp_path / "logs" / "web.log",
     )
     block = mgr._render_program(pd, "web")
