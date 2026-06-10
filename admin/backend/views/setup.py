@@ -60,7 +60,7 @@ def start_init():
         config.validate()
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    if error := VolumeManager(config.volume).validate_capacity():
+    if error := VolumeManager(config.volume).validate_sizes_fit_device():
         return jsonify({"ok": False, "error": error}), 400
 
     args = {}

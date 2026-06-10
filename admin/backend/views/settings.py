@@ -275,14 +275,14 @@ def update_settings():
     volume_manager = VolumeManager(config.volume)
 
     old_restart = _restart_trigger_values(config)
-    old_zfs = volume_manager.quota_values()
+    old_zfs = volume_manager.current_sizes()
 
     if error := ConfigPatcher(config, data).apply():
         return jsonify({"ok": False, "error": error}), 400
 
-    if error := volume_manager.validate_capacity():
+    if error := volume_manager.validate_sizes_fit_device():
         return jsonify({"ok": False, "error": error}), 400
-    if error := volume_manager.validate_quota_changes(old_zfs):
+    if error := volume_manager.validate_quota_above_usage(old_zfs):
         return jsonify({"ok": False, "error": error}), 400
 
     try:

@@ -291,7 +291,7 @@ class BenchConfig:
         from bench_cli.managers.volume_manager import VolumeManager
 
         for label, dataset in (("benches", self.volume.benches), ("mariadb", self.volume.mariadb)):
-            if error := VolumeManager.validate_reservation_quota(dataset.reservation, dataset.quota, label):
+            if error := VolumeManager.validate_reservation_within_quota(dataset.reservation, dataset.quota, label):
                 raise ConfigError(error)
 
     @staticmethod
