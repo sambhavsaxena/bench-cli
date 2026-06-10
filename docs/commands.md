@@ -28,9 +28,38 @@ Installs and configures the entire environment described in `bench.toml`. Safe t
 - **Ubuntu:** The process has `sudo` access (required for `apt-get`).
 - **macOS:** Homebrew is installed (`brew` is in `$PATH`). No `sudo` required — Homebrew installs to user-owned directories.
 
+### Passwordless sudo setup (optional)
+
+```
+bench init --sudo-password <password>
+```
+
+Passing `--sudo-password` writes a sudoers drop-in at `/etc/sudoers.d/<user>` so that `apt-get`, `nginx`, `systemctl`, `loginctl`, `ln`, `unlink`, `zpool`, `zfs`, and `rsync` can all run without a password prompt during and after setup.
+
+**The password is never stored.** It is forwarded directly to `sudo -S tee` in a single subprocess call and discarded immediately. Nothing is written to disk, logged, or retained in memory beyond that call.
+
+The sudoers file grants `NOPASSWD` only for the specific commands bench manages:
+
+```
+<user> ALL=(ALL) NOPASSWD: /usr/bin/apt-get
+<user> ALL=(ALL) NOPASSWD: /usr/sbin/nginx
+<user> ALL=(ALL) NOPASSWD: /usr/bin/systemctl
+<user> ALL=(ALL) NOPASSWD: /usr/bin/loginctl
+<user> ALL=(ALL) NOPASSWD: /usr/bin/ln
+<user> ALL=(ALL) NOPASSWD: /usr/bin/unlink
+<user> ALL=(ALL) NOPASSWD: /usr/sbin/zpool
+<user> ALL=(ALL) NOPASSWD: /usr/sbin/zfs
+<user> ALL=(ALL) NOPASSWD: /usr/bin/rsync
+```
+
+The write is idempotent — if all of these rules are already present in the file, the step is skipped entirely.
+
+If the `IS_SUDOERS_SETUP` environment variable is set, `bench init` assumes the sudoers file is already in place and skips the step without asking for a password. This is the expected state in CI and managed deployments where the file is provisioned externally.
+
 ### Steps
 
 ```
+0.  Configure passwordless sudo (only when --sudo-password is given and IS_SUDOERS_SETUP is unset)
 1.  Validate bench.toml
 2.  Install system packages
 3.  Create bench directory structure

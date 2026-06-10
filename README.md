@@ -24,6 +24,20 @@ A zero-dependency CLI for managing [Frappe](https://frappeframework.com) environ
 **Ubuntu 22.04+** — Python 3.11+, `sudo` access  
 **macOS** — Python 3.11+, [Homebrew](https://brew.sh) (dev only)
 
+## Passwordless sudo (optional)
+
+`bench init` can write a sudoers drop-in so that subsequent `apt-get`, `nginx`, `systemctl`, and related calls run without a password prompt:
+
+```bash
+bench init --sudo-password <your-sudo-password>
+```
+
+**The password is never stored.** It is used once to write `/etc/sudoers.d/<user>` via `sudo -S tee`, then immediately discarded. Only the specific commands that bench manages are granted `NOPASSWD` — everything else still requires a password.
+
+The write is idempotent: if the required rules are already in the file, the step is silently skipped.
+
+If the `IS_SUDOERS_SETUP` environment variable is set (e.g. in CI or a managed deployment where the file is pre-provisioned), the password is not requested and the step is skipped entirely.
+
 ## Install
 
 ```bash
