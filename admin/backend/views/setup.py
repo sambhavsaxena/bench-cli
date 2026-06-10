@@ -47,8 +47,22 @@ def _validate(data: dict) -> str | None:
 def start_init():
     import os
 
+    from bench_cli.config.bench_config import BenchConfig
+    from bench_cli.managers.volume_manager import VolumeManager
+
     bench_root = Path(current_app.config["BENCH_ROOT"])
     data = request.get_json(silent=True) or {}
+
+    # Pre-flight validation so volume sizing errors surface in the wizard
+    # instead of failing deep inside the init task.
+    try:
+        config = BenchConfig.from_file(bench_root / "bench.toml")
+        config.validate()
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if error := VolumeManager(config.volume).validate_capacity():
+        return jsonify({"ok": False, "error": error}), 400
+
     args = {}
     sudoers_already_setup = bool(os.environ.get("IS_SUDOERS_SETUP"))
     if not sudoers_already_setup and data.get("sudo_password"):

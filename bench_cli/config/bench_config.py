@@ -18,9 +18,11 @@ from bench_cli.exceptions import ConfigError
 _BENCH_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 _EMAIL_PATTERN = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
 _VERSION_PATTERN = re.compile(r"^\d+(\.\d+)*$")
-_ZFS_SIZE_PATTERN = re.compile(r"^\d+(\.\d+)?[KMGTkmgt]?$")
+_ZFS_SIZE_PATTERN = re.compile(r"^[1-9]\d*[KMGTkmgt]?$")
 _REDIS_PORT_MIN = 1024
 _REDIS_PORT_MAX = 65535
+_PORT_MIN = 1
+_PORT_MAX = 65535
 
 
 @dataclass
@@ -190,6 +192,7 @@ class BenchConfig:
         self._validate_required_fields()
         self._validate_bench_name()
         self._validate_app_names_unique()
+        self._validate_ports()
         self._validate_redis_ports()
         self._validate_worker_counts()
         self._validate_letsencrypt_email()
@@ -220,6 +223,18 @@ class BenchConfig:
             if name in seen:
                 raise ConfigError(f"Duplicate app name '{name}'. App names must be unique.")
             seen.add(name)
+
+    def _validate_ports(self) -> None:
+        ports = {
+            "bench.http_port": self.http_port,
+            "bench.socketio_port": self.socketio_port,
+            "mariadb.port": self.mariadb.port,
+            "nginx.http_port": self.nginx.http_port,
+            "nginx.https_port": self.nginx.https_port,
+        }
+        for name, port in ports.items():
+            if not (_PORT_MIN <= port <= _PORT_MAX):
+                raise ConfigError(f"{name} {port} is out of range. Must be between {_PORT_MIN} and {_PORT_MAX}.")
 
     def _validate_redis_ports(self) -> None:
         ports = [self.redis.cache_port, self.redis.queue_port, self.redis.socketio_port]
@@ -268,13 +283,24 @@ class BenchConfig:
         self._validate_zfs_size("volume.benches.quota", self.volume.benches.quota)
         self._validate_zfs_size("volume.mariadb.reservation", self.volume.mariadb.reservation)
         self._validate_zfs_size("volume.mariadb.quota", self.volume.mariadb.quota)
+        self._validate_reservation_quota()
         if not Path(self.volume.mariadb.data_dir).is_absolute():
             raise ConfigError(f"volume.mariadb.data_dir '{self.volume.mariadb.data_dir}' must be an absolute path.")
+
+    def _validate_reservation_quota(self) -> None:
+        from bench_cli.managers.volume_manager import VolumeManager
+
+        for label, dataset in (("benches", self.volume.benches), ("mariadb", self.volume.mariadb)):
+            if error := VolumeManager.validate_reservation_quota(dataset.reservation, dataset.quota, label):
+                raise ConfigError(error)
 
     @staticmethod
     def _validate_zfs_size(field_name: str, value: str) -> None:
         if not _ZFS_SIZE_PATTERN.match(value):
-            raise ConfigError(f"{field_name} '{value}' is not a valid ZFS size. Examples: '10G', '512M', '1T'.")
+            raise ConfigError(
+                f"{field_name} '{value}' is not a valid ZFS size. Must be a positive integer with an "
+                f"optional K/M/G/T suffix — examples: '10G', '512M', '1T'. Decimals and negatives are not allowed."
+            )
 
     @property
     def framework_app(self) -> AppConfig:

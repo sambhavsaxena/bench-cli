@@ -7,9 +7,8 @@ from flask import Blueprint, current_app, jsonify, request
 
 from bench_cli.config.bench_config import BenchConfig
 from bench_cli.config.toml_writer import bench_config_to_toml
+from bench_cli.managers.volume_manager import VolumeManager
 from bench_cli.platform import is_linux
-
-from ..validators import first_error, validate_email, validate_port, validate_worker_count
 
 settings_bp = Blueprint("settings", __name__)
 
@@ -45,16 +44,6 @@ def _restart_trigger_values(config: BenchConfig) -> dict:
     }
 
 
-def _zfs_quota_values(config: BenchConfig) -> dict:
-    volume = config.volume
-    return {
-        "benches_quota": volume.benches.quota,
-        "benches_reservation": volume.benches.reservation,
-        "mariadb_quota": volume.mariadb.quota,
-        "mariadb_reservation": volume.mariadb.reservation,
-    }
-
-
 # ── Config patching ───────────────────────────────────────────────────────────
 
 
@@ -73,7 +62,11 @@ class ConfigPatcher:
         self._apply_volume()
         if error := self._apply_production():
             return error
-        return self._validate()
+        try:
+            self.config.validate()
+        except Exception as error:
+            return str(error)
+        return None
 
     def _apply_bench(self) -> None:
         bench = self.data.get("bench") or {}
@@ -153,69 +146,6 @@ class ConfigPatcher:
             self.config.production.process_manager = process_manager
         self.config.production.nginx = bool(production.get("nginx", self.config.production.nginx))
         return None
-
-    def _validate(self) -> str | None:
-        config = self.config
-        return first_error(
-            validate_port(config.http_port, "HTTP Port"),
-            validate_port(config.socketio_port, "SocketIO Port"),
-            validate_port(config.mariadb.port, "MariaDB Port"),
-            validate_port(config.redis.cache_port, "Redis Cache Port"),
-            validate_port(config.redis.queue_port, "Redis Queue Port"),
-            validate_port(config.redis.socketio_port, "Redis SocketIO Port"),
-            validate_port(config.nginx.http_port, "Nginx HTTP Port"),
-            validate_port(config.nginx.https_port, "Nginx HTTPS Port"),
-            validate_worker_count(config.workers.default_count, "Default workers"),
-            validate_worker_count(config.workers.short_count, "Short workers"),
-            validate_worker_count(config.workers.long_count, "Long workers"),
-            validate_email(config.letsencrypt.email),
-        )
-
-
-# ── ZFS ───────────────────────────────────────────────────────────────────────
-
-
-def _validate_volume_quota(config: BenchConfig, old: dict) -> str | None:
-    from bench_cli.managers.volume_manager import VolumeManager
-
-    volume = config.volume
-    if not volume.enabled:
-        return None
-    manager = VolumeManager(volume)
-    new = _zfs_quota_values(config)
-    for dataset, key in [(volume.benches_dataset, "benches_quota"), (volume.mariadb_dataset, "mariadb_quota")]:
-        if new[key] != old[key]:
-            if error := manager.validate_quota(dataset, new[key]):
-                return error
-    return None
-
-
-def _apply_dataset_zfs(manager, dataset: str, quota_key: str, reservation_key: str, old: dict, new: dict) -> str | None:
-    from bench_cli.exceptions import VolumeError
-
-    if not manager.dataset_exists(dataset):
-        return None
-    try:
-        if new[quota_key] != old[quota_key]:
-            manager.set_quota(dataset, new[quota_key])
-        if new[reservation_key] != old[reservation_key]:
-            manager.set_reservation(dataset, new[reservation_key])
-    except VolumeError as error:
-        return str(error)
-    return None
-
-
-def _apply_volume_zfs(config: BenchConfig, old: dict) -> str | None:
-    from bench_cli.managers.volume_manager import VolumeManager
-
-    volume = config.volume
-    if not volume.enabled:
-        return None
-    manager = VolumeManager(volume)
-    new = _zfs_quota_values(config)
-    return _apply_dataset_zfs(manager, volume.benches_dataset, "benches_quota", "benches_reservation", old, new) or _apply_dataset_zfs(
-        manager, volume.mariadb_dataset, "mariadb_quota", "mariadb_reservation", old, new
-    )
 
 
 # ── Process restart ───────────────────────────────────────────────────────────
@@ -342,18 +272,17 @@ def update_settings():
     except Exception as error:
         return jsonify({"ok": False, "error": str(error)}), 500
 
+    volume_manager = VolumeManager(config.volume)
+
     old_restart = _restart_trigger_values(config)
-    old_zfs = _zfs_quota_values(config)
+    old_zfs = volume_manager.quota_values()
 
     if error := ConfigPatcher(config, data).apply():
         return jsonify({"ok": False, "error": error}), 400
 
-    try:
-        config.validate()
-    except Exception as error:
-        return jsonify({"ok": False, "error": str(error)}), 400
-
-    if error := _validate_volume_quota(config, old_zfs):
+    if error := volume_manager.validate_capacity():
+        return jsonify({"ok": False, "error": error}), 400
+    if error := volume_manager.validate_quota_changes(old_zfs):
         return jsonify({"ok": False, "error": error}), 400
 
     try:
@@ -361,7 +290,7 @@ def update_settings():
     except Exception as error:
         return jsonify({"ok": False, "error": f"Failed to write config: {error}"}), 500
 
-    zfs_error = _apply_volume_zfs(config, old_zfs)
+    zfs_error = volume_manager.apply_size_changes(old_zfs)
 
     restarted, restart_error = False, None
     if _needs_restart(old_restart, _restart_trigger_values(config)):
