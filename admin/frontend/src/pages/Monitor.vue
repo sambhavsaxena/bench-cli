@@ -139,7 +139,7 @@ onUnmounted(() => {
     <!-- System Stats -->
     <div v-if="stats" class="rounded-lg border border-outline-gray-1 bg-surface-white px-6 py-5 shadow-sm">
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-ink-gray-9">System</h2>
+        <h2 class="font-semibold text-ink-gray-9">System</h2>
         <span class="flex items-center gap-1.5 text-xs text-ink-gray-4">
           <span class="h-2 w-2 animate-pulse rounded-full bg-surface-green-3" />
           Live
@@ -217,7 +217,7 @@ onUnmounted(() => {
     <!-- Processes -->
     <div class="rounded-lg border border-outline-gray-1 bg-surface-white px-6 py-5 shadow-sm">
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-ink-gray-9">Processes</h2>
+        <h2 class="font-semibold text-ink-gray-9">Processes</h2>
         <div class="flex items-center gap-2">
           <span v-if="!paused" class="text-xs text-ink-gray-4">Refreshing in {{ countdownDisplay }}s</span>
           <Button variant="ghost" size="sm" @click="paused = !paused">{{ paused ? 'Resume' : 'Pause' }}</Button>

@@ -41,7 +41,7 @@ const breadcrumbs = computed(() => {
         <Breadcrumbs :items="breadcrumbs" />
         <div id="header-actions" class="ml-auto flex items-center gap-2" />
       </header>
-      <div class="prose prose-sm max-w-none p-6 flex-1 overflow-auto min-h-0">
+      <div class="p-6 flex-1 overflow-auto min-h-0">
         <RouterView />
       </div>
     </main>

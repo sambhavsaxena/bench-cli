@@ -138,7 +138,7 @@ onMounted(load)
     <template v-else>
       <!-- Appearance -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-ink-gray-8">Appearance</h3>
+        <h3 class="font-semibold text-ink-gray-8">Appearance</h3>
         <Select label="Theme" :options="THEME_OPTIONS" v-model="theme" class="w-40" />
       </div>
 
@@ -146,7 +146,7 @@ onMounted(load)
 
       <!-- Mode -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-ink-gray-8">Mode</h3>
+        <h3 class="font-semibold text-ink-gray-8">Mode</h3>
         <div class="flex flex-col gap-3">
           <Switch v-model="form.production.enabled" label="Production Mode" />
           <div v-if="form.production.enabled" class="flex flex-col gap-3 pl-4 border-l border-outline-gray-2">
@@ -159,7 +159,7 @@ onMounted(load)
 
       <!-- Bench -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-ink-gray-8">Bench</h3>
+        <h3 class="font-semibold text-ink-gray-8">Bench</h3>
         <div class="grid grid-cols-2 gap-4">
           <FormControl label="Name" :modelValue="form.bench.name" disabled />
           <FormControl label="Python Version" :modelValue="form.bench.python" disabled />
@@ -174,7 +174,7 @@ onMounted(load)
 
       <!-- MariaDB -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-ink-gray-8">MariaDB</h3>
+        <h3 class="font-semibold text-ink-gray-8">MariaDB</h3>
         <div class="grid grid-cols-2 gap-4">
           <FormControl label="Host" v-model="form.mariadb.host" />
           <FormControl type="number" label="Port" v-model="form.mariadb.port" />
@@ -188,7 +188,7 @@ onMounted(load)
 
       <!-- Redis -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-ink-gray-8">Redis</h3>
+        <h3 class="font-semibold text-ink-gray-8">Redis</h3>
         <div class="grid grid-cols-2 gap-4">
           <FormControl type="number" label="Cache Port" v-model="form.redis.cache_port" />
           <FormControl type="number" label="Queue Port" v-model="form.redis.queue_port" />
@@ -201,7 +201,7 @@ onMounted(load)
 
       <!-- Workers -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-ink-gray-8">Workers</h3>
+        <h3 class="font-semibold text-ink-gray-8">Workers</h3>
         <div class="grid grid-cols-3 gap-4">
           <FormControl type="number" label="Default Workers" v-model="form.workers.default" />
           <FormControl type="number" label="Short Workers" v-model="form.workers.short" />
@@ -213,7 +213,7 @@ onMounted(load)
 
       <!-- Nginx -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-ink-gray-8">Nginx</h3>
+        <h3 class="font-semibold text-ink-gray-8">Nginx</h3>
         <Switch v-model="form.production.nginx" label="Manage Nginx" />
         <div class="grid grid-cols-2 gap-4">
           <FormControl type="number" label="HTTP Port" v-model="form.nginx.http_port" />
@@ -228,7 +228,7 @@ onMounted(load)
 
       <!-- Let's Encrypt -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-ink-gray-8">Let's Encrypt</h3>
+        <h3 class="font-semibold text-ink-gray-8">Let's Encrypt</h3>
         <div class="grid grid-cols-2 gap-4">
           <FormControl label="Email" v-model="form.letsencrypt.email" placeholder="you@example.com" />
           <FormControl label="Webroot Path" v-model="form.letsencrypt.webroot_path" />
@@ -239,7 +239,7 @@ onMounted(load)
 
       <!-- Setup -->
       <div class="flex flex-col gap-4">
-        <h3 class="text-base font-semibold text-ink-gray-8">Setup</h3>
+        <h3 class="font-semibold text-ink-gray-8">Setup</h3>
         <ErrorMessage :message="taskError" />
         <div class="flex flex-wrap gap-2">
           <Button variant="outline" :loading="taskLoading === 'setup-nginx'" @click="taskLoading = 'setup-nginx'; runTask('setup-nginx')">Setup Nginx</Button>

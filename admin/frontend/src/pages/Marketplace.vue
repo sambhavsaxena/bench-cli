@@ -133,7 +133,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="not-prose flex gap-6">
+  <div class="flex gap-6">
     <!-- Category sidebar -->
     <nav class="w-44 shrink-0 sticky top-0 h-fit flex flex-col gap-0.5 pt-0.5">
       <button

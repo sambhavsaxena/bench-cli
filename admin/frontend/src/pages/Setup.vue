@@ -245,7 +245,7 @@ function backToConfig() {
         <p v-if="isConfiguring" class="mb-1 text-xs text-ink-gray-4">
           Step {{ stepNumber }} of {{ configSteps.length }}
         </p>
-        <h1 class="text-base font-medium text-ink-gray-7">{{ title }}</h1>
+        <h1 class="font-medium text-ink-gray-7">{{ title }}</h1>
         <p v-if="subtitle" class="mt-0.5 text-sm text-ink-gray-4">{{ subtitle }}</p>
       </div>
 

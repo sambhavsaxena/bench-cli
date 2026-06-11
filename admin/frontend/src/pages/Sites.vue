@@ -156,7 +156,7 @@ onMounted(() => { loadSites(); loadRegistry() })
       <Button variant="solid" @click="openCreate">Create Site</Button>
     </Teleport>
 
-    <h2 class="text-base font-normal text-ink-gray-5">Your Sites</h2>
+    <h2 class="font-normal text-ink-gray-5">Your Sites</h2>
 
     <LoadingText v-if="loading" />
     <ErrorMessage v-else-if="error" :message="error" />

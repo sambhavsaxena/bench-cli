@@ -311,7 +311,7 @@ onMounted(() => { loadApps(); loadRegistry(); loadUpdateStatus(); loadDefaultBra
       <Button variant="solid" @click="openAdd">Add App</Button>
     </Teleport>
 
-    <h2 class="text-base font-normal text-ink-gray-5">Installed Apps</h2>
+    <h2 class="font-normal text-ink-gray-5">Installed Apps</h2>
 
     <LoadingText v-if="loading" />
     <ErrorMessage v-else-if="error" :message="error" />

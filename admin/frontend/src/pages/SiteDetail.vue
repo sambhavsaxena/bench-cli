@@ -394,7 +394,7 @@ onMounted(() => { load(); loadRegistry() })
       <div class="flex items-start justify-between gap-4">
         <div class="flex flex-col gap-1.5">
           <div class="flex items-center gap-2">
-            <h1 class="flex items-center gap-1.5 text-2xl font-semibold text-ink-gray-9">
+            <h1 class="flex items-center gap-1.5 font-semibold text-ink-gray-9">
               {{ siteName }}
               <span
                 class="group relative inline-flex h-2 w-2 shrink-0 rounded-full"
@@ -489,7 +489,7 @@ onMounted(() => { load(); loadRegistry() })
           <div v-else-if="tab.label === 'Backups'" class="pt-4 flex flex-col gap-4">
             <!-- Schedule -->
             <div class="rounded border p-4">
-              <h3 class="mb-3 text-sm font-semibold text-ink-gray-9">Backup Schedule</h3>
+              <h3 class="mb-3 font-semibold text-ink-gray-9">Backup Schedule</h3>
               <div v-if="scheduleLoading" class="text-sm text-ink-gray-5">Loading…</div>
               <div v-else class="flex flex-col gap-3">
                 <p class="text-sm text-ink-gray-7">
@@ -523,7 +523,7 @@ onMounted(() => { load(); loadRegistry() })
             <!-- History -->
             <div class="rounded border p-4">
               <div class="mb-3 flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-ink-gray-9">Backup History</h3>
+                <h3 class="font-semibold text-ink-gray-9">Backup History</h3>
                 <Button variant="ghost" size="sm" @click="loadBackups">Refresh</Button>
               </div>
               <div v-if="backupsLoading" class="py-6 text-center text-sm text-ink-gray-5">Loading…</div>
