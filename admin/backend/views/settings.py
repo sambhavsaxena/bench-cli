@@ -133,7 +133,6 @@ class ConfigPatcher:
         volume_config.benches.quota = str(volume.get("benches_quota", volume_config.benches.quota))
         volume_config.mariadb.reservation = str(volume.get("mariadb_reservation", volume_config.mariadb.reservation))
         volume_config.mariadb.quota = str(volume.get("mariadb_quota", volume_config.mariadb.quota))
-        volume_config.snapshots.enabled = bool(volume.get("snapshots_enabled", volume_config.snapshots.enabled))
 
     def _apply_production(self) -> str | None:
         production = self.data.get("production") or {}
@@ -237,7 +236,6 @@ def _build_settings_response(config: BenchConfig) -> dict:
         "letsencrypt": {"email": config.letsencrypt.email, "webroot_path": str(config.letsencrypt.webroot_path)},
         "production": {"process_manager": config.production.process_manager, "nginx": config.production.nginx},
         "volume": {
-            "enabled": volume.enabled,
             "pool": volume.pool,
             "backing": volume.backing,
             "device": volume.device,
@@ -248,7 +246,6 @@ def _build_settings_response(config: BenchConfig) -> dict:
             "mariadb_reservation": volume.mariadb.reservation,
             "mariadb_quota": volume.mariadb.quota,
             "mariadb_data_dir": volume.mariadb.data_dir,
-            "snapshots_enabled": volume.snapshots.enabled,
         },
     }
 
@@ -276,16 +273,14 @@ def update_settings():
         return jsonify({"ok": False, "error": str(error)}), 500
 
     volume_manager = VolumeManager(config.volume)
-
     old_restart = _restart_trigger_values(config)
-    old_zfs = volume_manager.current_sizes()
 
     if error := ConfigPatcher(config, data).apply():
         return jsonify({"ok": False, "error": error}), 400
 
     if error := volume_manager.validate_sizes_fit_backing():
         return jsonify({"ok": False, "error": error}), 400
-    if error := volume_manager.validate_quota_above_usage(old_zfs):
+    if error := volume_manager.validate_quotas_above_usage():
         return jsonify({"ok": False, "error": error}), 400
 
     try:
@@ -293,7 +288,7 @@ def update_settings():
     except Exception as error:
         return jsonify({"ok": False, "error": f"Failed to write config: {error}"}), 500
 
-    zfs_error = volume_manager.apply_size_changes(old_zfs)
+    zfs_error = volume_manager.apply_sizes()
 
     restarted, restart_error = False, None
     if _needs_restart(old_restart, _restart_trigger_values(config)):

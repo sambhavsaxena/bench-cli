@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { Button, FormControl, FormLabel, Password, Switch, ErrorMessage, TextInput } from 'frappe-ui'
+import { Button, FormControl, FormLabel, Password, ErrorMessage, TextInput } from 'frappe-ui'
 import TerminalOutput from '../components/TerminalOutput.vue'
 import { processLine } from '../utils/ansi.js'
 
@@ -17,7 +17,6 @@ const isLinux = ref(true)
 const isSudoersSetup = ref(null)
 
 const form = ref({
-  python: '3.14',
   sudo_password: '',
   mariadb_password: '',
   admin_password: '',
@@ -29,8 +28,7 @@ const form = ref({
   workers_default: 2,
   workers_short: 1,
   workers_long: 1,
-  volume_enabled: false,
-  volume_pool: '',
+  volume_pool: 'bench-pool',
   volume_backing: 'device',
   volume_device: '',
   volume_image_size: '60G',
@@ -38,8 +36,7 @@ const form = ref({
   volume_benches_quota: '50G',
   volume_mariadb_reservation: '5G',
   volume_mariadb_quota: '20G',
-  volume_mariadb_data_dir: '/var/lib/mysql',
-  volume_snapshots_enabled: false,
+  production_process_manager: 'none',
 })
 
 const siteForm = ref({ name: 'site1.localhost', admin_password: 'admin' })
@@ -53,7 +50,7 @@ const sizesTouched = ref(false)
 const deviceOptions = computed(() => [
   ...availableDevices.value.map((d) => ({
     label: `${d.path} (${Math.floor(d.size_bytes / 1024 ** 3)}G${
-      d.pool ? `, existing pool ${d.pool}` : d.has_signature ? ', has old data — will be wiped' : ''
+      d.pool ? `, pool: ${d.pool}` : d.has_signature ? ', stale data' : ''
     })`,
     value: d.path,
   })),
@@ -102,7 +99,10 @@ const configSteps = computed(() =>
 const stepNumber = computed(() => configSteps.value.indexOf(step.value) + 1)
 const isConfiguring = computed(() => stepNumber.value > 0)
 const isTerminal = computed(() => step.value === 'running' || step.value === 'site-running')
-const isWide = computed(() => isTerminal.value)
+const modalWidthClass = computed(() => {
+  if (isTerminal.value) return 'max-w-2xl'
+  return 'max-w-lg'
+})
 
 const titles = {
   passwords: 'Set up passwords',
@@ -113,7 +113,7 @@ const titles = {
   'site-running': 'Creating site…',
 }
 const subtitles = {
-  volume: 'Optional — leave disabled to skip',
+  volume: 'Choose where the ZFS pool lives — a spare disk or a disk image on the root filesystem',
 }
 const title = computed(() => titles[step.value] || benchName.value)
 const subtitle = computed(() => subtitles[step.value] || null)
@@ -202,17 +202,17 @@ async function startSiteTask() {
 }
 
 function parseSize(value) {
-  // Positive integer with an optional K/M/G/T/P suffix — no decimals, no zero, no negatives.
-  const match = String(value).trim().toUpperCase().match(/^([1-9]\d*)\s*([KMGTP]?)$/)
+  // Positive integer with a required K/M/G/T/P suffix — no bare numbers, no decimals, no negatives.
+  const match = String(value).trim().toUpperCase().match(/^([1-9]\d*)\s*([KMGTP])$/)
   if (!match) return null
-  const mult = { '': 1, K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4, P: 1024 ** 5 }[match[2]]
+  const mult = { K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4, P: 1024 ** 5 }[match[2]]
   return parseInt(match[1], 10) * mult
 }
 
 function validateVolume() {
-  if (!form.value.volume_enabled) return null
+  if (!isLinux.value) return null
   if (!form.value.volume_pool) return 'Pool name is required.'
-  const sizeHint = 'must be a positive integer with an optional K/M/G/T suffix (e.g. 10G)'
+  const sizeHint = 'must be a positive integer with a K/M/G/T suffix (e.g. 10G)'
   let imageSize = null
   if (form.value.volume_backing === 'image') {
     imageSize = parseSize(form.value.volume_image_size)
@@ -301,7 +301,7 @@ function backToConfig() {
   <div class="flex h-screen items-center justify-center bg-surface-gray-2 p-4">
     <div
       class="flex w-full flex-col rounded-xl border border-outline-gray-2 bg-surface-white shadow-sm"
-      :class="isWide ? 'max-w-2xl' : 'max-w-sm'"
+      :class="modalWidthClass"
       style="max-height: calc(100vh - 2rem)"
     >
       <!-- Header -->
@@ -332,7 +332,6 @@ function backToConfig() {
         </div>
 
         <div v-else-if="step === 'customize'" class="flex flex-col gap-4">
-          <FormControl label="Python version" v-model="form.python" placeholder="3.14" />
           <FormControl label="Frappe branch" v-model="form.app_branch" placeholder="version-16" />
           <FormControl label="Frappe repository" v-model="form.app_repo" />
           <div class="grid grid-cols-3 gap-2">
@@ -357,27 +356,34 @@ function backToConfig() {
               </div>
             </div>
           </div>
+          <FormControl
+            type="select"
+            label="Production process manager"
+            v-model="form.production_process_manager"
+            :options="[
+              { label: 'None — development mode (bench start)', value: 'none' },
+              { label: 'Supervisor — bench-owned supervisord, no root needed', value: 'supervisor' },
+              { label: 'Systemd — systemctl --user units', value: 'systemd' },
+            ]"
+          />
           <ErrorMessage v-if="error" :message="error" />
         </div>
 
         <div v-else-if="step === 'volume'" class="flex flex-col gap-4">
-          <Switch
-            v-model="form.volume_enabled"
-            label="Enable ZFS volume management"
-            description="Isolates bench and MariaDB data in ZFS datasets with quotas. Pool and device cannot be changed after initialization."
+          <FormControl
+            type="select"
+            label="Storage backing"
+            v-model="form.volume_backing"
+            :options="[
+              { label: 'Dedicated block device', value: 'device' },
+              { label: 'Disk image on root filesystem (no spare disk needed)', value: 'image' },
+            ]"
           />
-          <template v-if="form.volume_enabled">
-            <FormControl
-              type="select"
-              label="Storage backing"
-              v-model="form.volume_backing"
-              :options="[
-                { label: 'Dedicated block device', value: 'device' },
-                { label: 'Disk image on root filesystem (no spare disk needed)', value: 'image' },
-              ]"
-            />
-            <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-2 gap-2">
+            <div class="min-w-0">
               <FormControl label="Pool name" v-model="form.volume_pool" placeholder="bench-pool" />
+            </div>
+            <div class="min-w-0">
               <FormControl
                 v-if="form.volume_backing === 'device' && showDeviceDropdown"
                 type="select"
@@ -393,21 +399,19 @@ function backToConfig() {
               />
               <FormControl v-else label="Image size" v-model="form.volume_image_size" placeholder="60G" />
             </div>
-            <p v-if="form.volume_backing === 'image'" class="text-xs text-ink-gray-4">
-              A preallocated file of this size will be created at
-              /var/lib/bench-zfs/{{ form.volume_pool || 'pool' }}.img and used as the ZFS pool.
-            </p>
-            <div class="grid grid-cols-2 gap-2">
-              <FormControl label="Bench reservation" v-model="form.volume_benches_reservation" @input="sizesTouched = true" />
-              <FormControl label="Bench quota" v-model="form.volume_benches_quota" @input="sizesTouched = true" />
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-              <FormControl label="MariaDB reservation" v-model="form.volume_mariadb_reservation" @input="sizesTouched = true" />
-              <FormControl label="MariaDB quota" v-model="form.volume_mariadb_quota" @input="sizesTouched = true" />
-            </div>
-            <FormControl label="MariaDB data directory" v-model="form.volume_mariadb_data_dir" />
-            <Switch v-model="form.volume_snapshots_enabled" label="Enable snapshots" />
-          </template>
+          </div>
+          <p v-if="form.volume_backing === 'image'" class="text-xs text-ink-gray-4">
+            A preallocated file of this size will be created at
+            /var/lib/bench-zfs/{{ form.volume_pool || 'pool' }}.img and used as the ZFS pool.
+          </p>
+          <div class="grid grid-cols-2 gap-2">
+            <FormControl label="Bench reservation" v-model="form.volume_benches_reservation" @input="sizesTouched = true" />
+            <FormControl label="Bench quota" v-model="form.volume_benches_quota" @input="sizesTouched = true" />
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <FormControl label="MariaDB reservation" v-model="form.volume_mariadb_reservation" @input="sizesTouched = true" />
+            <FormControl label="MariaDB quota" v-model="form.volume_mariadb_quota" @input="sizesTouched = true" />
+          </div>
           <ErrorMessage v-if="error" :message="error" />
         </div>
 

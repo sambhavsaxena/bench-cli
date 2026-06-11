@@ -26,9 +26,19 @@ def save_config():
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
-    settings = {**data, "admin_enabled": True}
+    # Preserve any settings the wizard didn't send (e.g. python version, fields
+    # not shown in the current step). Incoming data wins on conflicts.
+    toml_path = bench_root / "bench.toml"
+    existing: dict = {}
+    if toml_path.exists():
+        try:
+            existing = BenchTomlBuilder.read_settings(toml_path)
+        except Exception:
+            pass
+
+    settings = {**existing, **data, "admin_enabled": True}
     content = BenchTomlBuilder(_current_name(bench_root), settings).render()
-    (bench_root / "bench.toml").write_text(content)
+    toml_path.write_text(content)
     return jsonify({"ok": True})
 
 
@@ -36,14 +46,13 @@ def _validate(data: dict) -> str | None:
     for field in ("mariadb_password", "admin_password"):
         if not data.get(field):
             return f"{field} is required"
-    if data.get("volume_enabled"):
-        if not data.get("volume_pool"):
-            return "volume_pool is required when volume management is enabled"
-        backing = data.get("volume_backing", "device")
-        if backing == "device" and not data.get("volume_device"):
-            return "volume_device is required when volume backing is a block device"
-        if backing == "image" and not data.get("volume_image_size"):
-            return "volume_image_size is required when volume backing is a disk image"
+    if not data.get("volume_pool"):
+        return "volume_pool is required"
+    backing = data.get("volume_backing", "auto")
+    if backing == "device" and not data.get("volume_device"):
+        return "volume_device is required when volume backing is a block device"
+    if backing == "image" and not data.get("volume_image_size"):
+        return "volume_image_size is required when volume backing is a disk image"
     return None
 
 

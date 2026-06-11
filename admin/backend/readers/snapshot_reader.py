@@ -27,11 +27,12 @@ class SnapshotReader:
     def read(self, dataset_filter: str | None = None) -> SnapshotStatus:
         from bench_cli.config.bench_config import BenchConfig
         from bench_cli.managers.volume_manager import VolumeManager
+        from bench_cli.platform import is_linux
 
         bench_config = BenchConfig.from_file(self._bench_root / "bench.toml")
         volume_config = bench_config.volume
 
-        if not volume_config.enabled:
+        if not is_linux():
             return SnapshotStatus(volume_enabled=False, snapshots_enabled=False)
 
         datasets = self._resolve_datasets(volume_config, dataset_filter)
@@ -39,7 +40,7 @@ class SnapshotReader:
         snapshots = self._collect_snapshots(manager, datasets)
         return SnapshotStatus(
             volume_enabled=True,
-            snapshots_enabled=volume_config.snapshots.enabled,
+            snapshots_enabled=True,
             snapshots=snapshots,
         )
 

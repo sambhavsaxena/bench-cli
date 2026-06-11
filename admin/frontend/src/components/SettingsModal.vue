@@ -331,35 +331,24 @@ watch(() => props.modelValue, (val) => {
 
               <!-- ZFS Volume -->
               <div v-else-if="activeTab === 'volume'" class="flex flex-col gap-4">
-                <div class="flex items-center gap-3">
-                  <Badge :theme="form.volume.enabled ? 'green' : 'gray'" size="sm">
-                    {{ form.volume.enabled ? 'Enabled' : 'Disabled' }}
-                  </Badge>
+                <div class="grid grid-cols-2 gap-4">
+                  <FormControl label="Pool Name" :modelValue="form.volume.pool" disabled />
+                  <FormControl
+                    v-if="form.volume.backing === 'image'"
+                    label="Disk Image"
+                    :modelValue="`${form.volume.image_path} (${form.volume.image_size})`"
+                    disabled
+                  />
+                  <FormControl v-else label="Block Device" :modelValue="form.volume.device" disabled />
                 </div>
-                <template v-if="form.volume.enabled">
-                  <div class="grid grid-cols-2 gap-4">
-                    <FormControl label="Pool Name" :modelValue="form.volume.pool" disabled />
-                    <FormControl
-                      v-if="form.volume.backing === 'image'"
-                      label="Disk Image"
-                      :modelValue="`${form.volume.image_path} (${form.volume.image_size})`"
-                      disabled
-                    />
-                    <FormControl v-else label="Block Device" :modelValue="form.volume.device" disabled />
-                  </div>
-                  <div class="grid grid-cols-2 gap-4">
-                    <FormControl label="Bench Reservation" v-model="form.volume.benches_reservation" />
-                    <FormControl label="Bench Quota" v-model="form.volume.benches_quota" />
-                  </div>
-                  <div class="grid grid-cols-2 gap-4">
-                    <FormControl label="MariaDB Reservation" v-model="form.volume.mariadb_reservation" />
-                    <FormControl label="MariaDB Quota" v-model="form.volume.mariadb_quota" />
-                  </div>
-<Switch v-model="form.volume.snapshots_enabled" label="Enable Snapshots" />
-                </template>
-                <p v-else class="text-sm text-ink-gray-5">
-                  ZFS volume management was not enabled during setup.
-                </p>
+                <div class="grid grid-cols-2 gap-4">
+                  <FormControl label="Bench Reservation" v-model="form.volume.benches_reservation" />
+                  <FormControl label="Bench Quota" v-model="form.volume.benches_quota" />
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <FormControl label="MariaDB Reservation" v-model="form.volume.mariadb_reservation" />
+                  <FormControl label="MariaDB Quota" v-model="form.volume.mariadb_quota" />
+                </div>
               </div>
 
               <!-- Updates -->
@@ -392,7 +381,7 @@ watch(() => props.modelValue, (val) => {
           </div>
 
           <!-- Footer -->
-          <div v-if="activeTab !== 'appearance' && activeTab !== 'updates' && !(activeTab === 'volume' && !form?.volume?.enabled)" class="flex items-center justify-end gap-3 px-6 py-3 border-t border-outline-gray-1 flex-shrink-0">
+          <div v-if="activeTab !== 'appearance' && activeTab !== 'updates'" class="flex items-center justify-end gap-3 px-6 py-3 border-t border-outline-gray-1 flex-shrink-0">
             <ErrorMessage :message="saveError" />
             <span v-if="saveSuccess" class="text-sm text-ink-green-2 font-medium">{{ saveSuccess }}</span>
             <Button @click="show = false">Cancel</Button>

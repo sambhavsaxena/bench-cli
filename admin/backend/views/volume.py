@@ -53,7 +53,7 @@ def status():
     return jsonify(
         {
             "enabled": True,
-            "snapshots_enabled": config.snapshots.enabled,
+            "snapshots_enabled": True,
             "pool": info.pool,
             "pool_health": info.pool_health,
             "datasets": [
@@ -101,11 +101,6 @@ def list_snapshots():
 def create_snapshot():
     bench_root = current_app.config["BENCH_ROOT"]
     config = _get_config(bench_root)
-    if not config.enabled:
-        return jsonify({"error": "Volume management is disabled."}), 400
-    if not config.snapshots.enabled:
-        return jsonify({"error": "Snapshots are disabled. Set volume.snapshots.enabled = true in bench.toml."}), 400
-
     body = request.get_json(silent=True) or {}
     dataset_name = body.get("dataset")
     if dataset_name == "mariadb":
@@ -132,9 +127,6 @@ def create_snapshot():
 def rollback_snapshot(dataset: str, tag: str):
     bench_root = current_app.config["BENCH_ROOT"]
     config = _get_config(bench_root)
-    if not config.enabled:
-        return jsonify({"error": "Volume management is disabled."}), 400
-
     if dataset == "mariadb":
         full_dataset = config.mariadb_dataset
     elif dataset == "benches":
@@ -155,9 +147,6 @@ def rollback_snapshot(dataset: str, tag: str):
 def destroy_snapshot(dataset: str, tag: str):
     bench_root = current_app.config["BENCH_ROOT"]
     config = _get_config(bench_root)
-    if not config.enabled:
-        return jsonify({"error": "Volume management is disabled."}), 400
-
     if dataset == "mariadb":
         full_dataset = config.mariadb_dataset
     elif dataset == "benches":

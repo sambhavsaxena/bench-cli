@@ -28,14 +28,18 @@ class VolumeReader:
 
     def read(self) -> VolumeInfo:
         from bench_cli.config.bench_config import BenchConfig
+        from bench_cli.platform import is_linux
 
         config = BenchConfig.from_file(self._bench_root / "bench.toml").volume
-        if not config.enabled:
-            return VolumeInfo(enabled=False)
+        # Volumes are mandatory on Linux; "enabled" reflects live state — whether
+        # the pool actually exists yet (False on macOS and before bench init).
+        health = self._pool_health(config.pool) if is_linux() else "unknown"
+        if health == "unknown":
+            return VolumeInfo(enabled=False, pool=config.pool)
         return VolumeInfo(
             enabled=True,
             pool=config.pool,
-            pool_health=self._pool_health(config.pool),
+            pool_health=health,
             datasets=[
                 self._read_dataset(config.benches_dataset),
                 self._read_dataset(config.mariadb_dataset),
