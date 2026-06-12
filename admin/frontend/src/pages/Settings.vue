@@ -126,7 +126,7 @@ onMounted(load)
 
 <template>
   <div class="max-w-2xl mx-auto flex flex-col gap-6">
-    <Teleport to="#header-actions">
+    <Teleport defer to="#header-actions">
       <span v-if="saveSuccess" class="text-sm text-ink-green-2 font-medium">{{ saveSuccess }}</span>
       <Button variant="solid" :loading="saving" @click="save">Save</Button>
     </Teleport>

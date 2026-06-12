@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import bench_cli.managers.volume_manager as volume_manager
 from bench_cli.config.volume_config import VolumeConfig
 from bench_cli.managers.volume_manager import (
+    DatasetInfo,
     DiskInfo,
     PoolInfo,
     compute_smart_defaults,
@@ -231,13 +232,25 @@ def test_existing_pools_parses_zpool_output(monkeypatch) -> None:
             return SimpleNamespace(returncode=0, stdout="bench-pool\t53687091200\n")
         if argv[:2] == ["zpool", "list"]:
             return SimpleNamespace(returncode=0, stdout="bench-pool\t49.5G\t26M\t49.5G\t-\t-\t0%\t0%\t1.00x\tONLINE\t-\n\t/dev/nvme1n1p1\t50.0G\t26M\t49.5G\t-\t-\t0%\t0.05%\t-\tONLINE\n")
+        if argv[:2] == ["zfs", "list"]:
+            return SimpleNamespace(returncode=0, stdout="bench-pool\t/bench-pool\nbench-pool/mariadb\t/var/lib/mysql\n")
         if argv[0] == "lsblk":
             return SimpleNamespace(returncode=0, stdout="nvme1n1\n")
         raise AssertionError(f"unexpected command {argv}")
 
     monkeypatch.setattr(volume_manager.subprocess, "run", fake_run)
     pools = volume_manager.existing_pools()
-    assert pools == [PoolInfo(name="bench-pool", size_bytes=50 * G, device="/dev/nvme1n1")]
+    assert pools == [
+        PoolInfo(
+            name="bench-pool",
+            size_bytes=50 * G,
+            device="/dev/nvme1n1",
+            datasets=[
+                DatasetInfo(name="bench-pool", mountpoint="/bench-pool"),
+                DatasetInfo(name="bench-pool/mariadb", mountpoint="/var/lib/mysql"),
+            ],
+        )
+    ]
 
 
 def test_existing_pools_empty_when_zfs_missing(monkeypatch) -> None:

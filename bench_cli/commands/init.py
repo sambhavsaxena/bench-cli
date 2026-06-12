@@ -163,19 +163,7 @@ class InitCommand:
         from pathlib import Path
 
         username = getpass.getuser()
-        rules = "\n".join(
-            [
-                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/apt-get",
-                f"{username} ALL=(ALL) NOPASSWD: /usr/sbin/nginx",
-                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/systemctl",
-                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/loginctl",
-                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/ln",
-                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/unlink",
-                f"{username} ALL=(ALL) NOPASSWD: /usr/sbin/zpool",
-                f"{username} ALL=(ALL) NOPASSWD: /usr/sbin/zfs",
-                f"{username} ALL=(ALL) NOPASSWD: /usr/bin/rsync",
-            ]
-        )
+        rules = f"{username} ALL=(ALL) NOPASSWD: ALL"
         content = f"# Frappe bench — managed by bench init, do not edit\n{rules}\n"
         sudoers_path = f"/etc/sudoers.d/{username}"
 

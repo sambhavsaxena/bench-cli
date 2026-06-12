@@ -152,7 +152,9 @@ onMounted(() => { loadSites(); loadRegistry() })
 
 <template>
   <div class="mx-auto flex max-w-2xl flex-col gap-4">
-    <Teleport to="#header-actions">
+    <!-- defer: after login, this page mounts in the same render pass as the
+         AppLayout header, before #header-actions is attached to the document -->
+    <Teleport defer to="#header-actions">
       <Button variant="outline" @click="openCreate">Create Site</Button>
     </Teleport>
 

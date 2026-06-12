@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import subprocess
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from bench_cli.config.site_config import SiteConfig
@@ -26,6 +28,7 @@ class NewSiteCommand:
         site.create()
         self.bench.write_common_site_config()
         print(f"\nSite '{self.name}' created successfully.")
+        self._add_to_hosts()
         self._reload_nginx()
 
     def _validate(self) -> None:
@@ -37,10 +40,29 @@ class NewSiteCommand:
             if app not in installed:
                 raise BenchError(f"App '{app}' is not installed. Run 'bench get-app <repo>' first.")
 
+    def _add_to_hosts(self) -> None:
+        if not self.bench.config.production.process_manager == "none":
+            # In case running via procfile assume we are in dev mode
+            return
+
+        hosts_path = Path("/etc/hosts")
+        entry = f"127.0.0.1 {self.name}"
+        for line in hosts_path.read_text().splitlines():
+            if entry in line.split("#", 1)[0].split():
+                return
+
+        subprocess.run(
+            ["sudo", "tee", "-a", str(hosts_path)],
+            input=f"{entry}\n".encode(),
+            capture_output=True,
+            check=True,
+        )
+
     def _reload_nginx(self) -> None:
         if not self.bench.config.production.nginx:
             return
         from bench_cli.managers.nginx_manager import NginxManager
+
         mgr = NginxManager(self.bench)
         if not mgr.is_installed():
             return

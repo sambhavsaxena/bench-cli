@@ -97,12 +97,30 @@ class VolumeSetupCommand:
 
         self._resolve_backing()
 
+        if self._is_pool_already_configured():
+            print(f"Pool {self.config.pool} already setup")
+            return
+
         manager = VolumeManager(self.config)
         print(f"Creating ZFS pool '{self.config.pool}' and datasets...")
         manager.setup()
         self.setup_mariadb(manager)
         self.setup_bench(manager)
+
         print("Volume setup complete.")
+
+    def _is_pool_already_configured(self) -> bool:
+        from bench_cli.managers.volume_manager import existing_pools
+
+        pools = existing_pools()
+
+        for pool in pools:
+            for dataset_info in pool.datasets:
+                # Two active datasets of the same name are not allowed
+                if dataset_info.name == self.config.mariadb_dataset or dataset_info.name == self.config.benches_dataset:
+                    return True
+
+        return False
 
     def _resolve_backing(self) -> None:
         from bench_cli.managers.volume_manager import resolve_auto_backing

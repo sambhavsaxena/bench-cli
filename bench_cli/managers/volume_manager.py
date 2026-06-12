@@ -4,7 +4,7 @@ import json
 import shlex
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -31,10 +31,17 @@ class DiskInfo:
 
 
 @dataclass
+class DatasetInfo:
+    name: str
+    mountpoint: str
+
+
+@dataclass
 class PoolInfo:
     name: str
     size_bytes: int
     device: str
+    datasets: list[DatasetInfo] = field(default_factory=list)
 
 
 # Smart sizing policy: strict 60/40 quota split between benches and mariadb,
@@ -126,10 +133,45 @@ def existing_pools() -> list[PoolInfo]:
         if len(parts) < 2:
             continue
         try:
-            pools.append(PoolInfo(name=parts[0], size_bytes=int(parts[1]), device=_pool_backing_device(parts[0])))
+            pools.append(
+                PoolInfo(
+                    name=parts[0],
+                    size_bytes=int(parts[1]),
+                    device=_pool_backing_device(parts[0]),
+                    datasets=_pool_datasets(parts[0]),
+                )
+            )
         except ValueError:
             continue
     return pools
+
+
+def _pool_datasets(pool: str) -> list[DatasetInfo]:
+    """Datasets in the pool with their current mountpoints.
+
+    Lets setup spot a dataset already mounted where it wants to put one — most
+    importantly ``/var/lib/mysql``, where re-running on a machine that already
+    has a bench pool would otherwise collide on ``zfs set mountpoint``.
+    Unprivileged and best-effort: returns [] on any failure.
+    """
+    try:
+        result = subprocess.run(
+            ["zfs", "list", "-H", "-r", "-o", "name,mountpoint", pool],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+    except OSError:
+        return []
+    datasets = []
+    for line in result.stdout.strip().splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        datasets.append(DatasetInfo(name=parts[0], mountpoint=parts[1]))
+    return datasets
 
 
 def _pool_backing_device(pool: str) -> str:
