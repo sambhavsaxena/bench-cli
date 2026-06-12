@@ -175,9 +175,23 @@ class InitCommand:
         except OSError:
             pass
 
+        # Prime sudo's timestamp with the supplied password, then write the file,
+        # Second call won't prompt for password
+        auth = subprocess.run(
+            ["sudo", "-S", "-v"],
+            input=f"{self._sudo_password}\n",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if auth.returncode != 0:
+            print(f"  Warning: sudo authentication failed — {auth.stderr.strip() or 'incorrect password'}")
+            print("  Sudo operations may prompt for a password during setup.")
+            return
+
         result = subprocess.run(
-            ["sudo", "-S", "tee", sudoers_path],
-            input=f"{self._sudo_password}\n{content}",
+            ["sudo", "tee", sudoers_path],
+            input=content,
             capture_output=True,
             text=True,
             check=False,
