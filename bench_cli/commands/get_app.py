@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
 
 from bench_cli.config.app_config import AppConfig
 from bench_cli.core.app import App

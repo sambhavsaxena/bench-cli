@@ -369,27 +369,21 @@ function backToConfig() {
               { label: 'Disk image on root filesystem (no spare disk needed)', value: 'image' },
             ]"
           />
-          <div class="grid grid-cols-2 gap-2">
-            <div class="min-w-0">
-              <FormControl label="Pool name" v-model="form.volume_pool" placeholder="bench-pool" />
-            </div>
-            <div class="min-w-0">
-              <FormControl
-                v-if="form.volume_backing === 'device' && showDeviceDropdown"
-                type="select"
-                label="Block device"
-                v-model="form.volume_device"
-                :options="deviceOptions"
-              />
-              <FormControl
-                v-else-if="form.volume_backing === 'device'"
-                label="Block device"
-                v-model="form.volume_device"
-                placeholder="/dev/sdb"
-              />
-              <FormControl v-else label="Image size" v-model="form.volume_image_size" placeholder="60G" />
-            </div>
-          </div>
+          <FormControl label="Pool name" v-model="form.volume_pool" placeholder="bench-pool" />
+          <FormControl
+            v-if="form.volume_backing === 'device' && showDeviceDropdown"
+            type="select"
+            label="Block device"
+            v-model="form.volume_device"
+            :options="deviceOptions"
+          />
+          <FormControl
+            v-else-if="form.volume_backing === 'device'"
+            label="Block device"
+            v-model="form.volume_device"
+            placeholder="/dev/sdb"
+          />
+          <FormControl v-else label="Image size" v-model="form.volume_image_size" placeholder="60G" />
           <p v-if="form.volume_backing === 'image'" class="text-xs text-ink-gray-4">
             A preallocated file of this size will be created at
             /var/lib/bench-zfs/{{ form.volume_pool || 'pool' }}.img and used as the ZFS pool.
