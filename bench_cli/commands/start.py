@@ -26,8 +26,8 @@ class RunCommand:
         admin_mgr = AdminEnvManager(cli_root)
         admin_mgr.ensure()
 
-        dist = cli_root / "admin" / "backend" / "static" / "dist"
-        if not dist.exists():
+        assets = cli_root / "admin" / "backend" / "static" / "dist" / "assets"
+        if not assets.exists():
             print("Downloading admin frontend...")
             download_admin_frontend(cli_root)
 
@@ -36,13 +36,21 @@ class RunCommand:
         print(f"  Open http://localhost:{port} in your browser\n")
 
         env = {**os.environ, "PYTHONPATH": str(cli_root)}
-        subprocess.run([
-            str(admin_mgr.python), "-m", "admin.backend.server",
-            "--bench-root", str(self.bench.path),
-            "--port", str(port),
-            "--timeout", "7200",
-            "--wizard",
-        ], env=env)
+        subprocess.run(
+            [
+                str(admin_mgr.python),
+                "-m",
+                "admin.backend.server",
+                "--bench-root",
+                str(self.bench.path),
+                "--port",
+                str(port),
+                "--timeout",
+                "7200",
+                "--wizard",
+            ],
+            env=env,
+        )
 
         if (self.bench.path / "env" / "bin" / "python").exists():
             print("\nSetup complete. Run 'bench start' to start your bench.\n", flush=True)
