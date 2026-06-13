@@ -62,7 +62,7 @@ class PythonEnvManager:
     def install_node_dependencies(self) -> None:
         for app in self.bench.apps():
             if (app.path / "package.json").exists():
-                run_command(["npm", "install"], cwd=app.path, stream_output=True)
+                run_command([get_yarn_bin(), "install"], cwd=app.path, stream_output=True)
 
     def build_assets(self) -> None:
         run_command(
