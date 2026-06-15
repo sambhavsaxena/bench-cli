@@ -1,9 +1,12 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Button, Badge, Dialog, FormControl, LoadingText, ErrorMessage, Tabs } from 'frappe-ui'
+import { Button, Badge, Dialog, Dropdown, FormControl, ListView, LoadingText, ErrorMessage, Tabs } from 'frappe-ui'
 import LucideDatabase from '~icons/lucide/database'
 import LucideServer from '~icons/lucide/server'
+import LucideMoreVertical from '~icons/lucide/more-vertical'
+import LucideDownload from '~icons/lucide/download'
+import LucideTrash2 from '~icons/lucide/trash-2'
 import ConfigTree from '../components/ConfigTree.vue'
 
 const route = useRoute()
@@ -313,6 +316,61 @@ function formatBackupDate(iso) {
   return new Date(iso).toLocaleString()
 }
 
+// Backup file kinds: 'public-file' | 'private-file' | 'database' | 'site_config'
+function backupFile(set, kind) {
+  return set.files.find(f => f.kind === kind) || null
+}
+
+function backupFileSize(set, kind) {
+  const f = backupFile(set, kind)
+  return f ? formatSize(f.size_bytes) : '—'
+}
+
+function downloadBackupFile(set, kind) {
+  const f = backupFile(set, kind)
+  if (!f) return
+  window.location.href = `/api/sites/${siteName}/backups/download?filename=${encodeURIComponent(f.filename)}`
+}
+
+function backupMenuOptions(set) {
+  const opts = []
+  const downloads = [
+    ['public-file', 'Download Public'],
+    ['private-file', 'Download Private'],
+    ['database', 'Download Database'],
+    ['site_config', 'Download Config'],
+  ]
+  for (const [kind, label] of downloads) {
+    if (backupFile(set, kind)) {
+      opts.push({ label, icon: LucideDownload, onClick: () => downloadBackupFile(set, kind) })
+    }
+  }
+  opts.push({
+    label: 'Delete backup',
+    icon: LucideTrash2,
+    theme: 'red',
+    onClick: () => { deleteBackupTarget.value = set; showDeleteBackup.value = true },
+  })
+  return opts
+}
+
+const backupColumns = [
+  { label: 'Timestamp', key: 'timestamp', align: 'left', width: 2 },
+  { label: 'Private', key: 'private', align: 'center', width: 1 },
+  { label: 'Public', key: 'public', align: 'center', width: 1 },
+  { label: 'Database', key: 'database', align: 'center', width: 1 },
+  { label: '', key: 'actions', align: 'right', width: '3rem' },
+]
+
+const backupRows = computed(() => backups.value.map(set => ({
+  name: set.timestamp,
+  timestamp: formatBackupDate(set.created_at),
+  private: backupFileSize(set, 'private-file'),
+  public: backupFileSize(set, 'public-file'),
+  database: backupFileSize(set, 'database'),
+  set,
+})))
+
 const COLORS = ['#4f46e5', '#0891b2', '#059669', '#d97706', '#dc2626', '#7c3aed']
 function hashColor(name) {
   let h = 0
@@ -613,10 +671,10 @@ onMounted(() => { load(); loadRegistry() })
               </div>
             </div>
 
-            <!-- History -->
+            <!-- Backups -->
             <div class="rounded border p-4">
               <div class="mb-3 flex items-center justify-between">
-                <h3 class="font-semibold text-ink-gray-9">Backup History</h3>
+                <h3 class="font-semibold text-ink-gray-9">Backups</h3>
                 <Button variant="ghost" size="sm" @click="loadBackups">Refresh</Button>
               </div>
               <div v-if="backupsLoading" class="py-6 text-center text-sm text-ink-gray-5">Loading…</div>
@@ -626,25 +684,30 @@ onMounted(() => { load(); loadRegistry() })
               <div v-else-if="!backups.length" class="py-10 text-center text-sm text-ink-gray-4">
                 No backups found.
               </div>
-              <div v-else class="flex flex-col gap-2">
-                <div v-for="set in backups" :key="set.timestamp" class="rounded border p-3">
-                  <div class="mb-2 flex items-center justify-between">
-                    <p class="text-sm font-medium text-ink-gray-8">{{ formatBackupDate(set.created_at) }}</p>
-                    <Button variant="ghost" theme="red" size="sm"
-                      @click="deleteBackupTarget = set; showDeleteBackup = true">Delete</Button>
+              <ListView
+                v-else
+                :columns="backupColumns"
+                :rows="backupRows"
+                row-key="name"
+                :options="{ selectable: false, showTooltip: false, rowHeight: 44 }"
+              >
+                <template #cell="{ column, row, item, align }">
+                  <div v-if="column.key === 'actions'" class="flex w-full justify-end">
+                    <Dropdown :options="backupMenuOptions(row.set)" placement="left">
+                      <template #default="{ open }">
+                        <Button variant="ghost" size="sm" :active="open">
+                          <template #icon><LucideMoreVertical class="h-4 w-4" /></template>
+                        </Button>
+                      </template>
+                    </Dropdown>
                   </div>
-                  <div class="flex flex-col gap-1">
-                    <div
-                      v-for="file in set.files"
-                      :key="file.filename"
-                      class="flex items-center justify-between gap-2 text-xs"
-                    >
-                      <span class="truncate font-mono text-ink-gray-7">{{ file.filename }}</span>
-                      <span class="shrink-0 text-ink-gray-4">{{ formatSize(file.size_bytes) }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                  <div
+                    v-else
+                    class="w-full truncate text-sm"
+                    :class="column.key === 'timestamp' ? 'text-left text-ink-gray-8' : 'text-center font-mono text-ink-gray-6'"
+                  >{{ item }}</div>
+                </template>
+              </ListView>
             </div>
           </div>
 

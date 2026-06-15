@@ -43,3 +43,7 @@ htmlcov/
 admin/frontend/node_modules/
 admin/backend/static/dist/
 *.timestamp-*
+
+# Agent Skills
+.agents
+skills-lock.json

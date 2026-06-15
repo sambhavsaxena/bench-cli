@@ -106,8 +106,8 @@ async function createSite() {
     } else if (restoreMode.value === 'existing') {
       const set = backupSets.value.find(s => s.timestamp === selectedBackupTs.value)
       const db = set.files.find(f => f.kind === 'database')
-      const pub = set.files.find(f => f.kind === 'files')
-      const priv = set.files.find(f => f.kind === 'private-files')
+      const pub = set.files.find(f => f.kind === 'public-file')
+      const priv = set.files.find(f => f.kind === 'private-file')
       const body = { command: 'new-site-from-backup', name: siteName.value.trim(), db_file: db.path }
       if (adminPassword.value.trim()) body.admin_password = adminPassword.value.trim()
       if (pub) body.public_files = pub.path
