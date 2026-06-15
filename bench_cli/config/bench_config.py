@@ -272,7 +272,7 @@ class BenchConfig:
 
     def _validate_mariadb_version(self) -> None:
         if self.mariadb.version and not _VERSION_PATTERN.match(self.mariadb.version):
-            raise ConfigError(f"mariadb.version '{self.mariadb.version}' is invalid. Must be a version string like '10.6' or '11.4'.")
+            raise ConfigError(f"mariadb.version '{self.mariadb.version}' is invalid. Must be a version string like '11.8' or '11.4'.")
 
     def _validate_redis_version(self) -> None:
         if self.redis.version and not _VERSION_PATTERN.match(self.redis.version):
