@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import pwd
+import re
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from bench_cli.platform import get_package_manager, is_linux
 from bench_cli.utils import run_command
+
+_NGINX_CONF = Path("/etc/nginx/nginx.conf")
+_USER_DIRECTIVE = re.compile(r"^[ \t]*user[ \t]+[^;\n]+;", re.MULTILINE)
 
 if TYPE_CHECKING:
     from bench_cli.config.site_config import SiteConfig
@@ -278,6 +283,23 @@ class NginxManager:
         if symlink_path.exists() or symlink_path.is_symlink():
             run_command(["sudo", "unlink", str(symlink_path)])
         run_command(["sudo", "ln", "-s", str(source_path), str(symlink_path)])
+        self._set_worker_user()
+
+    def _set_worker_user(self) -> None:
+        """Run nginx workers as the bench owner. Idempotent."""
+        owner = pwd.getpwuid(self.bench.path.stat().st_uid).pw_name
+        directive = f"user {owner};"
+        original = _NGINX_CONF.read_text()
+        if _USER_DIRECTIVE.search(original):
+            updated = _USER_DIRECTIVE.sub(directive, original, count=1)
+        else:
+            updated = directive + "\n" + original
+        if updated == original:
+            return
+        staged = self.bench.config_path / "nginx" / "nginx.conf"
+        staged.write_text(updated)
+        run_command(["sudo", "cp", str(staged), str(_NGINX_CONF)])
+        staged.unlink()
 
     def reload(self) -> None:
         run_command(["sudo", "nginx", "-t"])
