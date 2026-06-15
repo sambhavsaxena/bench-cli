@@ -567,7 +567,7 @@ onMounted(() => { load(); loadRegistry() })
                   </div>
                   <span class="text-sm font-medium text-ink-gray-8">{{ titleMap[app] || app }}</span>
                 </div>
-                <Button variant="ghost" theme="red" size="sm" @click="confirmUninstall(app)">
+                <Button v-if="app !== 'frappe'" variant="ghost" theme="red" size="sm" @click="confirmUninstall(app)">
                   Uninstall
                 </Button>
               </div>
