@@ -73,11 +73,21 @@ class TaskReader:
         output_path.touch()
         with open(output_path, "r", errors="replace", newline='') as log_file:
             log_file.seek(0, 2)  # seek to end
+            cur = ''  # current line; \r resets it, \n commits it
 
             while True:
-                line = log_file.readline()
-                if line:
-                    yield _collapse_cr(line.rstrip("\n"))
+                chunk = log_file.read(8192)
+                if chunk:
+                    for ch in chunk:
+                        if ch == '\n':
+                            yield cur  # commit: append
+                            cur = ''
+                        elif ch == '\r':
+                            cur = ''
+                        else:
+                            cur += ch
+                    if cur:
+                        yield f"__CR__:{cur}"  # partial: overwrite
                     continue
 
                 status_path = self._bench_root / "tasks" / task_id / "status"
@@ -86,9 +96,8 @@ class TaskReader:
                 effective = self._effective_status(task_id, raw_status, pid)
 
                 if effective != "running":
-                    # Drain remaining output
-                    for remaining in log_file:
-                        yield remaining.rstrip("\n")
+                    if cur:
+                        yield cur  # commit trailing partial line
 
                     meta_path = self._bench_root / "tasks" / task_id / "meta.json"
                     exit_code: int | None = None

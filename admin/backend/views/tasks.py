@@ -70,6 +70,8 @@ def stream_task_output(task_id: str):
         for line in reader.stream_output(task_id):
             if line.startswith("__DONE__:"):
                 yield f"event: done\ndata: {line[9:]}\n\n"
+            elif line.startswith("__CR__:"):
+                yield f"event: overwrite\ndata: {line[7:]}\n\n"
             else:
                 yield f"data: {line}\n\n"
 
