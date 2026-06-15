@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -39,7 +40,22 @@ class MariaDBManager:
     def _brew_package(self) -> str:
         if self.config.version:
             return f"mariadb@{self.config.version}"
-        return "mariadb"
+        return self._installed_brew_formula() or "mariadb"
+
+    def _installed_brew_formula(self) -> str | None:
+        """Return the mariadb formula Homebrew already manages (e.g. 'mariadb@10.6').
+
+        When bench.toml doesn't pin a version, start/stop must target whatever
+        brew actually installed — assuming plain 'mariadb' fails when only a
+        versioned formula like mariadb@10.6 is present.
+        """
+        result = subprocess.run(["brew", "list", "--formula"], capture_output=True, text=True)
+        if result.returncode != 0:
+            return None
+        formulae = result.stdout.split()
+        if "mariadb" in formulae:
+            return "mariadb"
+        return next((f for f in formulae if f.startswith("mariadb@")), None)
 
     def _apt_package(self) -> str:
         if self.config.version:
