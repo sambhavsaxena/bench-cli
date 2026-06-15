@@ -43,7 +43,7 @@ def test_redis_manager_single_instance_writes_one_config(tmp_path: Path) -> None
     assert not (bench.config_path / "redis_cache.conf").exists()
 
 
-def test_redis_manager_multi_instance_writes_three_configs(tmp_path: Path) -> None:
+def test_redis_manager_multi_instance_writes_two_configs(tmp_path: Path) -> None:
     bench = make_bench(tmp_path)
     redis_cfg = RedisConfig(cache_port=13000, queue_port=11000)
     assert not redis_cfg.is_single_instance
@@ -53,7 +53,7 @@ def test_redis_manager_multi_instance_writes_three_configs(tmp_path: Path) -> No
 
     assert (bench.config_path / "redis_cache.conf").exists()
     assert (bench.config_path / "redis_queue.conf").exists()
-    assert (bench.config_path / "redis_socketio.conf").exists()
+    assert not (bench.config_path / "redis_socketio.conf").exists()
     assert not (bench.config_path / "redis.conf").exists()
 
 
@@ -74,7 +74,6 @@ def test_redis_manager_multi_config_ports(tmp_path: Path) -> None:
 
     assert "port 13000" in (bench.config_path / "redis_cache.conf").read_text()
     assert "port 11000" in (bench.config_path / "redis_queue.conf").read_text()
-    assert "port 12000" in (bench.config_path / "redis_socketio.conf").read_text()
 
 
 def test_redis_manager_cache_config_has_no_save(tmp_path: Path) -> None:
