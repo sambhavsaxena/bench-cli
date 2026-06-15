@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import secrets
+import socket
+import tomllib
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_file, session
@@ -21,11 +23,10 @@ from bench_cli.config.bench_config import BenchConfig
 from bench_cli.exceptions import ConfigError
 
 _STATIC_DIR = Path(__file__).parent / "static"
-_OPEN_PATHS = {"/api/status", "/api/login", "/api/logout"}
+_OPEN_PATHS = {"/api/status", "/api/login", "/api/logout", "/api/benches/"}
 
 
 def _wizard_status(bench_root: Path) -> dict:
-    import tomllib
     name = bench_root.name
     try:
         with open(bench_root / "bench.toml", "rb") as f:
@@ -40,6 +41,7 @@ def create_app(bench_root: Path) -> Flask:
     app.config["BENCH_ROOT"] = bench_root
     app.config["TEMPLATES_AUTO_RELOAD"] = False
     app.secret_key = secrets.token_hex(32)
+    app.config["SESSION_COOKIE_NAME"] = f"bench_session_{bench_root.name}"
 
     def _load_config():
         return BenchConfig.from_file(bench_root / "bench.toml")
@@ -75,8 +77,6 @@ def create_app(bench_root: Path) -> Flask:
             config = BenchConfig.from_file(bench_root / "bench.toml")
         except Exception as exc:
             return jsonify({"enabled": False, "error": str(exc)}), 503
-        # Show wizard when bench was never initialized, or when init was
-        # interrupted before an admin password was saved.
         if not initialized or not config.admin.password:
             return jsonify(_wizard_status(bench_root))
         return jsonify(
@@ -105,6 +105,30 @@ def create_app(bench_root: Path) -> Flask:
     def api_logout():
         session.clear()
         return jsonify({"ok": True})
+
+    @app.route("/api/benches/")
+    def api_benches():
+        benches_dir = bench_root.parent
+        running = []
+        for bench_dir in sorted(benches_dir.iterdir()):
+            if not bench_dir.is_dir():
+                continue
+            toml_path = bench_dir / "bench.toml"
+            if not toml_path.exists():
+                continue
+            try:
+                with open(toml_path, "rb") as f:
+                    config = tomllib.load(f)
+                port = config.get("admin", {}).get("port")
+                name = config.get("bench", {}).get("name", bench_dir.name)
+                if not port:
+                    continue
+                with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                    pass
+                running.append({"name": name, "port": port})
+            except Exception:
+                continue
+        return jsonify(running)
 
     app.register_blueprint(setup_bp, url_prefix="/api/setup")
     app.register_blueprint(dashboard_bp, url_prefix="/api")
