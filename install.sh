@@ -28,11 +28,8 @@ fi
 SUDOERS_FILE="/etc/sudoers.d/$(whoami)"
 if [ "$(uname)" != "Darwin" ] && [ ! -f "$SUDOERS_FILE" ] && command -v sudo &>/dev/null; then
     echo "Bench needs passwordless sudo to install packages and manage services."
-    if ! sudo -n true 2>/dev/null; then
-        read -rsp "Enter your sudo password: " SUDO_PASSWORD
-        echo
-        echo "$SUDO_PASSWORD" | sudo -S -v 2>/dev/null || { echo "sudo authentication failed."; exit 1; }
-    fi
+    # Authenticate using the system's native, secure sudo prompt
+    sudo -v || { echo "sudo authentication failed."; exit 1; }
     SUDOERS_TMP="$(mktemp)"
     printf '# Frappe bench — managed by install.sh, do not edit\n%s ALL=(ALL) NOPASSWD: ALL\n' "$(whoami)" > "$SUDOERS_TMP"
     if sudo visudo -cf "$SUDOERS_TMP" >/dev/null; then
