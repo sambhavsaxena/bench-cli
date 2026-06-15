@@ -82,7 +82,7 @@ def _apply_setting(config: BenchConfig, key: str, value) -> None:
         config.apps[0].branch = str(value)
     elif key == "redis_port":
         redis = config.redis
-        redis.cache_port = redis.queue_port = redis.socketio_port = int(value)
+        redis.cache_port = redis.queue_port = int(value)
     # unknown keys (wizard extras like is_linux) are ignored
 
 

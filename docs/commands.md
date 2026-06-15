@@ -157,13 +157,16 @@ port 13000
 bind 127.0.0.1
 ```
 
-**Multi-instance mode** (`cache_port`/`queue_port`/`socketio_port`):
+**Multi-instance mode** (`cache_port`/`queue_port`):
 
-**`redis_cache.conf`** / **`redis_queue.conf`** / **`redis_socketio.conf`**
+**`redis_cache.conf`** / **`redis_queue.conf`**
 ```
 port <N>
 bind 127.0.0.1
 ```
+
+There is no dedicated socketio Redis — socketio shares the cache instance, so
+`common_site_config.json` sets `redis_socketio` equal to `redis_cache`.
 
 Existing files are overwritten.
 
@@ -188,7 +191,6 @@ Multi-instance Redis:
 ...
 redis_cache: redis-server config/redis_cache.conf
 redis_queue: redis-server config/redis_queue.conf
-redis_socketio: redis-server config/redis_socketio.conf
 ```
 
 On completion, prints:

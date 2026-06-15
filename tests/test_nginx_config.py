@@ -16,7 +16,7 @@ _BASE_DATA: dict = {
         {"name": "frappe", "repo": "https://github.com/frappe/frappe", "branch": "version-16"}
     ],
     "mariadb": {"root_password": "root"},
-    "redis": {"cache_port": 13000, "queue_port": 11000, "socketio_port": 12000},
+    "redis": {"cache_port": 13000, "queue_port": 11000},
 }
 
 _SSL_DATA: dict = {

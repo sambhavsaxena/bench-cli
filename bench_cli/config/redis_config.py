@@ -6,9 +6,8 @@ from typing import Optional
 class RedisConfig:
     cache_port: int = 13000
     queue_port: int = 11000
-    socketio_port: int = 12000
     version: Optional[str] = None
 
     @property
     def is_single_instance(self) -> bool:
-        return self.cache_port == self.queue_port == self.socketio_port
+        return self.cache_port == self.queue_port

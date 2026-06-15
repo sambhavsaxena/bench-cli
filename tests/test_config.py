@@ -23,7 +23,7 @@ MINIMAL_VALID_DATA: dict = {
         {"name": "frappe", "repo": "https://github.com/frappe/frappe", "branch": "version-16"}
     ],
     "mariadb": {"root_password": "root"},
-    "redis": {"cache_port": 13000, "queue_port": 11000, "socketio_port": 12000},
+    "redis": {"cache_port": 13000, "queue_port": 11000},
 }
 
 
@@ -44,7 +44,6 @@ def test_load_minimal_config() -> None:
 
     assert config.redis.cache_port == 13000
     assert config.redis.queue_port == 11000
-    assert config.redis.socketio_port == 12000
 
 
 def test_framework_app_is_first() -> None:

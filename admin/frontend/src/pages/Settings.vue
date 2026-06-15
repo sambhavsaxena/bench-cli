@@ -25,7 +25,7 @@ const saveSuccess = ref('')
 const form = ref({
   bench: { name: '', python: '', http_port: 8000, socketio_port: 9000, default_branch: '' },
   mariadb: { host: 'localhost', port: 3306, admin_user: 'root', socket_path: '', version: '' },
-  redis: { cache_port: 13000, queue_port: 11000, socketio_port: 12000, version: '' },
+  redis: { cache_port: 13000, queue_port: 11000, version: '' },
   workers: { default: 2, short: 1, long: 1 },
   nginx: { http_port: 80, https_port: 443, config_dir: '/etc/nginx/conf.d', worker_processes: 'auto', client_max_body_size: '50m' },
   letsencrypt: { email: '', webroot_path: '/var/www/letsencrypt' },
@@ -53,7 +53,6 @@ function validateSettings() {
     [form.value.mariadb.port, 'MariaDB Port'],
     [form.value.redis.cache_port, 'Redis Cache Port'],
     [form.value.redis.queue_port, 'Redis Queue Port'],
-    [form.value.redis.socketio_port, 'Redis SocketIO Port'],
     [form.value.nginx.http_port, 'Nginx HTTP Port'],
     [form.value.nginx.https_port, 'Nginx HTTPS Port'],
   ]
@@ -192,7 +191,6 @@ onMounted(load)
         <div class="grid grid-cols-2 gap-4">
           <FormControl type="number" label="Cache Port" v-model="form.redis.cache_port" />
           <FormControl type="number" label="Queue Port" v-model="form.redis.queue_port" />
-          <FormControl type="number" label="SocketIO Port" v-model="form.redis.socketio_port" />
           <FormControl label="Version" v-model="form.redis.version" placeholder="e.g. 7" />
         </div>
       </div>

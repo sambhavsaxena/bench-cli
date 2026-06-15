@@ -36,7 +36,6 @@ class RedisManager:
         else:
             self._write_cache_config()
             self._write_queue_config()
-            self._write_socketio_config()
 
     def _write_single_config(self) -> None:
         content = (
@@ -61,10 +60,3 @@ class RedisManager:
             'save ""\n'
         )
         (self.bench.config_path / "redis_queue.conf").write_text(content)
-
-    def _write_socketio_config(self) -> None:
-        content = (
-            f"port {self.config.socketio_port}\n"
-            "bind 127.0.0.1\n"
-        )
-        (self.bench.config_path / "redis_socketio.conf").write_text(content)

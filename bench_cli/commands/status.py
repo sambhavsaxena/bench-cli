@@ -60,7 +60,6 @@ class StatusCommand:
         else:
             self._row("Cache port", str(redis.cache_port))
             self._row("Queue port", str(redis.queue_port))
-            self._row("SocketIO port", str(redis.socketio_port))
 
         if cfg.admin.enabled:
             self._section("Admin")

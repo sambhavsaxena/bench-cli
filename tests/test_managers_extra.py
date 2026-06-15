@@ -19,7 +19,7 @@ def make_bench(tmp_path: Path) -> Bench:
         python_version="3.14",
         apps=[AppConfig(name="frappe", repo="https://github.com/frappe/frappe", branch="version-16")],
         mariadb=MariaDBConfig(root_password="root"),
-        redis=RedisConfig(cache_port=13000, queue_port=11000, socketio_port=12000),
+        redis=RedisConfig(cache_port=13000, queue_port=11000),
         workers=WorkerConfig(default_count=1, short_count=1, long_count=1),
     )
     bench = Bench(config, tmp_path)
@@ -33,7 +33,7 @@ def make_bench(tmp_path: Path) -> Bench:
 
 def test_redis_manager_single_instance_writes_one_config(tmp_path: Path) -> None:
     bench = make_bench(tmp_path)
-    redis_cfg = RedisConfig(cache_port=13000, queue_port=13000, socketio_port=13000)
+    redis_cfg = RedisConfig(cache_port=13000, queue_port=13000)
     assert redis_cfg.is_single_instance
 
     manager = RedisManager(redis_cfg, bench)
@@ -45,7 +45,7 @@ def test_redis_manager_single_instance_writes_one_config(tmp_path: Path) -> None
 
 def test_redis_manager_multi_instance_writes_three_configs(tmp_path: Path) -> None:
     bench = make_bench(tmp_path)
-    redis_cfg = RedisConfig(cache_port=13000, queue_port=11000, socketio_port=12000)
+    redis_cfg = RedisConfig(cache_port=13000, queue_port=11000)
     assert not redis_cfg.is_single_instance
 
     manager = RedisManager(redis_cfg, bench)
@@ -59,7 +59,7 @@ def test_redis_manager_multi_instance_writes_three_configs(tmp_path: Path) -> No
 
 def test_redis_manager_single_config_content(tmp_path: Path) -> None:
     bench = make_bench(tmp_path)
-    redis_cfg = RedisConfig(cache_port=13000, queue_port=13000, socketio_port=13000)
+    redis_cfg = RedisConfig(cache_port=13000, queue_port=13000)
     RedisManager(redis_cfg, bench).generate_configs()
 
     content = (bench.config_path / "redis.conf").read_text()
@@ -69,7 +69,7 @@ def test_redis_manager_single_config_content(tmp_path: Path) -> None:
 
 def test_redis_manager_multi_config_ports(tmp_path: Path) -> None:
     bench = make_bench(tmp_path)
-    redis_cfg = RedisConfig(cache_port=13000, queue_port=11000, socketio_port=12000)
+    redis_cfg = RedisConfig(cache_port=13000, queue_port=11000)
     RedisManager(redis_cfg, bench).generate_configs()
 
     assert "port 13000" in (bench.config_path / "redis_cache.conf").read_text()
@@ -79,7 +79,7 @@ def test_redis_manager_multi_config_ports(tmp_path: Path) -> None:
 
 def test_redis_manager_cache_config_has_no_save(tmp_path: Path) -> None:
     bench = make_bench(tmp_path)
-    redis_cfg = RedisConfig(cache_port=13000, queue_port=11000, socketio_port=12000)
+    redis_cfg = RedisConfig(cache_port=13000, queue_port=11000)
     RedisManager(redis_cfg, bench).generate_configs()
 
     cache = (bench.config_path / "redis_cache.conf").read_text()

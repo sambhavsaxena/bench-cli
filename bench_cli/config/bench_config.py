@@ -96,13 +96,11 @@ class BenchConfig:
             return RedisConfig(
                 cache_port=port,
                 queue_port=port,
-                socketio_port=port,
                 version=data.get("version"),
             )
         return RedisConfig(
             cache_port=data.get("cache_port", 13000),
             queue_port=data.get("queue_port", 11000),
-            socketio_port=data.get("socketio_port", 12000),
             version=data.get("version"),
         )
 
@@ -249,8 +247,8 @@ class BenchConfig:
             raise ConfigError(f"bench.socketio_backend '{self.socketio_backend}' is invalid. Must be 'python' or 'node'.")
 
     def _validate_redis_ports(self) -> None:
-        ports = [self.redis.cache_port, self.redis.queue_port, self.redis.socketio_port]
-        port_names = ["redis.cache_port", "redis.queue_port", "redis.socketio_port"]
+        ports = [self.redis.cache_port, self.redis.queue_port]
+        port_names = ["redis.cache_port", "redis.queue_port"]
         for name, port in zip(port_names, ports):
             if not (_REDIS_PORT_MIN <= port <= _REDIS_PORT_MAX):
                 raise ConfigError(f"{name} {port} is out of range. Must be between {_REDIS_PORT_MIN} and {_REDIS_PORT_MAX}.")

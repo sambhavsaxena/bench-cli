@@ -47,17 +47,16 @@ class NginxManager:
     def _generate_site_config(self, site: "SiteConfig", ssl_ready: bool) -> str:
         bench_name = self.bench.config.name
         nginx_config = self.bench.config.nginx
-        redis_config = self.bench.config.redis
         bench_root = self.bench.path
 
         if not site.ssl or not ssl_ready:
             return self._render_http_only_block(
-                site, bench_name, nginx_config, redis_config, bench_root
+                site, bench_name, nginx_config, bench_root
             )
 
         return (
             self._render_http_redirect_block(site, nginx_config)
-            + self._render_https_block(site, bench_name, nginx_config, redis_config, bench_root)
+            + self._render_https_block(site, bench_name, nginx_config, bench_root)
         )
 
     def _render_upstream_block(self, bench_name: str) -> str:
@@ -73,13 +72,12 @@ class NginxManager:
         site: "SiteConfig",
         bench_name: str,
         nginx_config: object,
-        redis_config: object,
         bench_root: Path,
     ) -> str:
         server_name = " ".join(site.all_domains)
         max_body = nginx_config.client_max_body_size
         http_port = nginx_config.http_port
-        socketio_port = redis_config.socketio_port
+        socketio_port = self.bench.config.socketio_port
         webroot = self.bench.config.letsencrypt.webroot_path
 
         return (
@@ -123,13 +121,12 @@ class NginxManager:
         site: "SiteConfig",
         bench_name: str,
         nginx_config: object,
-        redis_config: object,
         bench_root: Path,
     ) -> str:
         server_name = " ".join(site.all_domains)
         https_port = nginx_config.https_port
         max_body = nginx_config.client_max_body_size
-        socketio_port = redis_config.socketio_port
+        socketio_port = self.bench.config.socketio_port
         cert = self.cert_path(site)
         key = Path("/etc/letsencrypt/live") / site.name / "privkey.pem"
 

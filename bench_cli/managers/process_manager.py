@@ -179,7 +179,6 @@ class ProcessManager:
         else:
             defs.append(self._redis_definition("redis_cache", "redis_cache.conf"))
             defs.append(self._redis_definition("redis_queue", "redis_queue.conf"))
-            defs.append(self._redis_definition("redis_socketio", "redis_socketio.conf"))
         return defs
 
     def _process_definitions(self) -> List[ProcessDefinition]:

@@ -41,7 +41,6 @@ def bench_config_to_toml(config: BenchConfig) -> str:
     parts.append("[redis]")
     parts.append(f"cache_port = {r.cache_port}")
     parts.append(f"queue_port = {r.queue_port}")
-    parts.append(f"socketio_port = {r.socketio_port}")
     if r.version:
         parts.append(f'version = "{r.version}"')
     parts.append("")
