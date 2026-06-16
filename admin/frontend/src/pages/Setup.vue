@@ -199,10 +199,26 @@ function streamTask(url, onDone) {
   }
 }
 
-function nextStep() {
-  if (step.value === 'passwords' && (!form.value.mariadb_password || !form.value.admin_password)) {
-    error.value = 'All password fields are required'
-    return
+async function nextStep() {
+  if (step.value === 'passwords') {
+    if (!form.value.mariadb_password || !form.value.admin_password) {
+      error.value = 'All password fields are required'
+      return
+    }
+    loading.value = true
+    try {
+      const { state } = await postJson('/api/setup/validate-mariadb', {
+        mariadb_password: form.value.mariadb_password,
+      })
+      if (state === 'invalid') {
+        error.value = 'Incorrect MariaDB root password.'
+        return
+      }
+    } catch {
+      // Validation is best-effort; init still guards the password.
+    } finally {
+      loading.value = false
+    }
   }
   error.value = ''
   step.value = configSteps.value[configSteps.value.indexOf(step.value) + 1]
@@ -461,7 +477,7 @@ function backToConfig() {
         <Button v-if="isTerminal && error" variant="subtle" class="w-full" @click="backToConfig">
           Back to configuration
         </Button>
-        <Button v-else-if="step === 'passwords'" variant="solid" class="w-full" @click="nextStep">
+        <Button v-else-if="step === 'passwords'" variant="solid" :loading="loading" class="w-full" @click="nextStep">
           Next
         </Button>
         <Button v-else-if="step !== configSteps[configSteps.length - 1] && isConfiguring" variant="solid" class="flex-1" @click="nextStep">
