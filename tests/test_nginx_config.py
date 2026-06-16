@@ -124,3 +124,16 @@ def test_http_port_is_configurable(tmp_path: Path) -> None:
 
     assert "listen 8080;" in config
     assert "listen 80;" not in config
+
+
+def test_socketio_location_proxies_to_socketio_port(tmp_path: Path) -> None:
+    data = copy.deepcopy(_BASE_DATA)
+    data["bench"] = {"name": "test-bench", "python": "3.14", "socketio_port": 9000}
+    bench = _make_bench(tmp_path, data)
+    manager = NginxManager(bench)
+
+    config = manager._generate_site_config(_BASE_SITE, ssl_ready=False)
+
+    assert "location /socket.io" in config
+    assert "proxy_pass         http://127.0.0.1:9000;" in config
+    assert "proxy_set_header   Upgrade $http_upgrade;" in config

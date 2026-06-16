@@ -390,7 +390,7 @@ Returns the full settings payload as JSON. The frontend uses this to populate th
   "bench": { "name": "my-bench", "python": "3.14", "http_port": 8000, "socketio_port": 9000 },
   "mariadb": { "host": "localhost", "port": 3306, "admin_user": "root", "socket_path": "", "version": "10.6" },
   "redis": { "cache_port": 13000, "queue_port": 11000, "socketio_port": 12000, "version": "7" },
-  "workers": { "default": 2, "short": 1, "long": 1 },
+  "workers": [{ "queues": ["default", "short", "long"], "count": 1 }],
   "nginx": { "http_port": 80, "https_port": 443, "config_dir": "/etc/nginx/conf.d", "worker_processes": "auto", "client_max_body_size": "50m" },
   "letsencrypt": { "email": "", "webroot_path": "/var/www/letsencrypt" },
   "production": { "process_manager": "none", "nginx": false },
@@ -417,7 +417,10 @@ Accepts a JSON body with any subset of the settings sections. Only keys present 
 ```json
 {
   "bench": { "http_port": 8080 },
-  "workers": { "default": 4 }
+  "workers": [
+    { "queues": ["default"], "count": 4 },
+    { "queues": ["short", "long"], "count": 1 }
+  ]
 }
 ```
 

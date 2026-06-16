@@ -45,23 +45,18 @@ def bench_config_to_toml(config: BenchConfig) -> str:
         parts.append(f'version = "{r.version}"')
     parts.append("")
 
-    w = config.workers
-    parts.append("[workers]")
-    parts.append(f"default = {w.default_count}")
-    parts.append(f"short = {w.short_count}")
-    parts.append(f"long = {w.long_count}")
-    for entry in w.custom:
+    for group in config.workers.groups:
+        parts.append("[[workers]]")
+        queues = ", ".join(f'"{q}"' for q in group.queues)
+        parts.append(f"queues = [{queues}]")
+        parts.append(f"count = {group.count}")
         parts.append("")
-        parts.append("[[workers.custom]]")
-        parts.append(f'queue = "{entry.queue}"')
-        parts.append(f"count = {entry.count}")
-        parts.append(f"timeout = {entry.timeout}")
-    parts.append("")
 
     p = config.production
     parts.append("[production]")
     parts.append(f'process_manager = "{p.process_manager}"')
     parts.append(f"nginx = {'true' if p.nginx else 'false'}")
+    parts.append(f"use_companion_manager = {'true' if p.use_companion_manager else 'false'}")
     parts.append("")
 
     n = config.nginx
@@ -71,6 +66,14 @@ def bench_config_to_toml(config: BenchConfig) -> str:
     parts.append(f'config_dir = "{n.config_dir}"')
     parts.append(f'worker_processes = "{n.worker_processes}"')
     parts.append(f'client_max_body_size = "{n.client_max_body_size}"')
+    parts.append("")
+
+    g = config.gunicorn
+    parts.append("[gunicorn]")
+    parts.append(f"workers = {g.workers}")
+    parts.append(f"threads = {g.threads}")
+    parts.append(f"timeout = {g.timeout}")
+    parts.append(f'worker_class = "{g.worker_class}"')
     parts.append("")
 
     le = config.letsencrypt

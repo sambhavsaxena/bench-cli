@@ -85,10 +85,9 @@ root_password = "your_root_password"
 [redis]
 port = 13000
 
-[workers]
-default = 2
-short = 1
-long = 1
+[[workers]]
+queues = ["default", "short", "long"]
+count = 1
 
 [admin]
 port = 8002
@@ -98,6 +97,12 @@ domain = "admin.example.com"       # optional — serve admin over HTTPS via ngi
 [production]
 process_manager = "supervisor"   # none | supervisor | systemd
 nginx = true
+use_companion_manager = false      # run scheduler/workers/socketio inside gunicorn
+
+[gunicorn]
+workers = 4
+threads = 4                          # threads per worker (used by gthread)
+timeout = 120
 
 [volume]
 pool = "bench-pool"
@@ -144,9 +149,15 @@ With multiple benches: `bench -b my-bench start`
 [production]
 process_manager = "supervisor"   # none | supervisor | systemd
 nginx = true
+use_companion_manager = false      # run scheduler/workers/socketio inside gunicorn
 
 [nginx]
 enabled = true
+
+[gunicorn]
+workers = 4
+threads = 4
+timeout = 120
 
 [letsencrypt]
 email = "ops@example.com"
@@ -166,6 +177,9 @@ bench restart                  # restart all bench processes (works with both ma
 - **Supervisor** — runs a bench-owned `supervisord` instance, no root needed.
 - **Systemd** — uses `systemctl --user` units; requires `loginctl enable-linger` once.
 - **None** — development mode; use `bench start` / Procfile runner.
+
+**Companion manager:**
+Set `production.use_companion_manager = true` to run the scheduler, RQ workers, and socket.io as Gunicorn companion processes. This keeps them under the same preloaded Gunicorn master to share memory copy-on-write. Requires the Frappe Gunicorn fork with companion support.
 
 When `admin.domain` is set, `bench setup production` obtains a certificate for that domain and generates an HTTPS nginx proxy block. HTTP redirects to HTTPS automatically.
 
