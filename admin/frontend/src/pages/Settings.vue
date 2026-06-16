@@ -228,8 +228,8 @@ onMounted(load)
           :key="i"
           class="grid grid-cols-[1fr_7rem_auto] items-end gap-3"
         >
-          <FormControl label="Queues" v-model="group.queues" placeholder="default, short, long" />
-          <FormControl type="number" label="Count" v-model.number="group.count" />
+          <FormControl :label="i === 0 ? 'Queues' : undefined" v-model="group.queues" placeholder="default, short, long" />
+          <FormControl type="number" :min="1" :label="i === 0 ? 'Count' : undefined" v-model.number="group.count" />
           <Button
             variant="ghost"
             icon="trash-2"

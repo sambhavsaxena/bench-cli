@@ -416,7 +416,7 @@ function backToConfig() {
               class="grid grid-cols-[1fr_5rem_auto] items-center gap-2"
             >
               <TextInput v-model="group.queues" placeholder="default, short, long" />
-              <TextInput v-model.number="group.count" type="number" />
+              <TextInput v-model.number="group.count" type="number" :min="1" />
               <Button
                 variant="ghost"
                 icon="trash-2"
