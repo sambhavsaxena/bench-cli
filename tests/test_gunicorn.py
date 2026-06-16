@@ -377,3 +377,25 @@ def test_systemd_web_service_has_long_timeout_in_companion_mode(tmp_path: Path) 
     unit = manager._render_unit(web_pd)
 
     assert "TimeoutStopSec=1600" in unit
+
+
+def test_malloc_arena_max_in_units(tmp_path: Path) -> None:
+    from bench_cli.managers.supervisor_process_manager import SupervisorProcessManager
+    from bench_cli.managers.systemd_process_manager import SystemdProcessManager
+
+    bench = make_bench(tmp_path, gunicorn=GunicornConfig())  # default 2
+    systemd = SystemdProcessManager(bench)
+    web = next(pd for pd in systemd._prod_process_definitions() if pd.name == "web")
+    assert "Environment=MALLOC_ARENA_MAX=2" in systemd._render_unit(web)
+    assert 'MALLOC_ARENA_MAX="2"' in SupervisorProcessManager(bench)._render_program(web, "web")
+
+    # 0 disables the cap (no env emitted).
+    bench0 = make_bench(tmp_path, gunicorn=GunicornConfig(malloc_arena_max=0))
+    systemd0 = SystemdProcessManager(bench0)
+    web0 = next(pd for pd in systemd0._prod_process_definitions() if pd.name == "web")
+    assert "MALLOC_ARENA_MAX" not in systemd0._render_unit(web0)
+
+
+def test_malloc_arena_max_validation(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError):
+        make_bench(tmp_path, gunicorn=GunicornConfig(malloc_arena_max=-1)).config.validate()

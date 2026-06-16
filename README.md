@@ -103,6 +103,7 @@ use_companion_manager = false      # run scheduler/workers/socketio inside gunic
 workers = 4
 threads = 4                          # threads per worker (used by gthread)
 timeout = 120
+malloc_arena_max = 2                 # cap glibc malloc arenas to reduce RSS; 0 = unset
 
 [volume]
 pool = "bench-pool"
@@ -158,6 +159,7 @@ enabled = true
 workers = 4
 threads = 4
 timeout = 120
+malloc_arena_max = 2
 
 [letsencrypt]
 email = "ops@example.com"

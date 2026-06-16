@@ -6,7 +6,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
@@ -33,6 +33,8 @@ class ProcessDefinition:
     name: str
     command: str
     log_file: Path
+    # Extra environment variables for this process (and anything it forks).
+    env: dict = field(default_factory=dict)
 
 
 class ProcessManager:
@@ -115,6 +117,7 @@ class ProcessManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 preexec_fn=os.setsid,
+                env={**os.environ, **pd.env} if pd.env else None,
             )
             color = _COLORS[i % len(_COLORS)]
             self._procs[pd.name] = proc
@@ -204,6 +207,14 @@ class ProcessManager:
             return self._web_definition(dev=True)
         return pd
 
+    def _py_memory_env(self) -> dict:
+        """Caps glibc malloc arenas for the Python procs to keep RSS down.
+        Companions inherit it by forking the gunicorn master."""
+        arenas = self.bench.config.gunicorn.malloc_arena_max
+        if arenas and arenas > 0:
+            return {"MALLOC_ARENA_MAX": str(arenas)}
+        return {}
+
     def _web_definition(self, dev: bool = False) -> ProcessDefinition:
         sites = self.bench.sites_path
         python = self.bench.env_path / "bin" / "python"
@@ -219,18 +230,22 @@ class ProcessManager:
             name="web",
             command=f"cd {sites} && {gunicorn} -c ../config/gunicorn.conf.py frappe.app:application",
             log_file=self.bench.logs_path / "web.log",
+            env=self._py_memory_env(),
         )
 
     def _socketio_definition(self) -> ProcessDefinition:
         if self.bench.config.socketio_backend == "python":
             python = self.bench.env_path / "bin" / "python"
             command = f"cd {self.bench.path} && {python} -m frappe.realtime.server"
+            backend_env = self._py_memory_env()
         else:
             command = f"cd {self.bench.sites_path} && node {self.bench.apps_path}/frappe/socketio.js"
+            backend_env = {}
         return ProcessDefinition(
             name="socketio",
             command=command,
             log_file=self.bench.logs_path / "socketio.log",
+            env=backend_env,
         )
 
     def _worker_pool_definition(self, queues: str, num_workers: int) -> ProcessDefinition:
@@ -239,6 +254,7 @@ class ProcessManager:
             name="worker_pool",
             command=f"cd {sites} && {self.bench.env_path}/bin/python -m frappe.utils.bench_helper frappe worker-pool --num-workers {num_workers} --queue {queues}",
             log_file=self.bench.logs_path / "worker_pool.log",
+            env=self._py_memory_env(),
         )
 
     def _worker_definitions(self, queue: str, count: int) -> List[ProcessDefinition]:
@@ -248,6 +264,7 @@ class ProcessManager:
                 name=f"worker_{queue}_{i}",
                 command=f"cd {sites} && {self.bench.env_path}/bin/python -m frappe.utils.bench_helper frappe worker --queue {queue}",
                 log_file=self.bench.logs_path / f"worker_{queue}_{i}.log",
+                env=self._py_memory_env(),
             )
             for i in range(1, count + 1)
         ]

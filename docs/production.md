@@ -130,6 +130,7 @@ workers = 4                          # number of Gunicorn worker processes
 threads = 4                          # threads per worker (used by gthread)
 timeout = 120
 worker_class = "sync"
+malloc_arena_max = 2                 # cap glibc malloc arenas; 0 = unset
 ```
 
 Gunicorn binds automatically to `127.0.0.1:<bench.http_port>` and `preload_app` is always enabled.
@@ -140,6 +141,7 @@ Gunicorn binds automatically to `127.0.0.1:<bench.http_port>` and `preload_app` 
 | `threads` | int | no | `4` | Threads per worker. Used by the `gthread` worker class. |
 | `timeout` | int | no | `120` | Request timeout in seconds. |
 | `worker_class` | string | no | `sync` | Gunicorn worker class. |
+| `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to reduce RSS. `0` leaves the system default unset. |
 
 ### `letsencrypt` section (new)
 
@@ -356,6 +358,7 @@ class GunicornConfig:
     threads: int = 4
     timeout: int = 120
     worker_class: str = 'sync'
+    malloc_arena_max: int = 2
 ```
 
 #### `LetsEncryptConfig`

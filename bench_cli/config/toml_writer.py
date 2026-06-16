@@ -74,6 +74,7 @@ def bench_config_to_toml(config: BenchConfig) -> str:
     parts.append(f"threads = {g.threads}")
     parts.append(f"timeout = {g.timeout}")
     parts.append(f'worker_class = "{g.worker_class}"')
+    parts.append(f"malloc_arena_max = {g.malloc_arena_max or 2}")
     parts.append("")
 
     le = config.letsencrypt

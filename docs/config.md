@@ -57,6 +57,7 @@ workers = 4             # number of Gunicorn worker processes
 threads = 4             # threads per worker (used by gthread worker class)
 timeout = 120
 worker_class = "sync"
+malloc_arena_max = 2    # cap glibc malloc arenas to reduce RSS; 0 = leave unset
 
 # ── Let's Encrypt (production only) ──────────────────────────────────────────
 [letsencrypt]
@@ -191,6 +192,7 @@ Omit this section entirely for development benches. The section is only read by 
 | `threads` | int | no | `4` | Threads per worker. Used by the `gthread` worker class. |
 | `timeout` | int | no | `120` | Request timeout in seconds. |
 | `worker_class` | string | no | `sync` | Gunicorn worker class. |
+| `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to reduce RSS. `0` leaves the system default unset. |
 
 ### `[letsencrypt]` _(production only)_
 
@@ -251,7 +253,7 @@ bench validates `bench.toml` before executing any command. Violations produce a 
 5. Worker counts must be positive integers.
 6. `letsencrypt.email` must match a basic email pattern (`^[^@]+@[^@]+\.[^@]+$`) when present.
 7. `nginx.http_port` and `nginx.https_port` must be distinct.
-8. `gunicorn.workers`, `gunicorn.threads`, and `gunicorn.timeout` must be positive integers; `gunicorn.worker_class` must be a non-empty string.
+8. `gunicorn.workers`, `gunicorn.threads`, and `gunicorn.timeout` must be positive integers; `gunicorn.worker_class` must be a non-empty string; `gunicorn.malloc_arena_max` must be a non-negative integer.
 9. `mariadb.version` and `redis.version`, when present, must match `^\d+(\.\d+)*$` (e.g. `"10.6"`, `"7"`, `"7.0"`).
 10. When `volume.enabled = true`: `pool` and `device` must be non-empty; `reservation` and `quota` values must match a valid ZFS size pattern (e.g. `"10G"`, `"500M"`, `"1T"`); quota must be greater than reservation for both datasets.
 

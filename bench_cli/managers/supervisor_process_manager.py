@@ -137,6 +137,8 @@ class SupervisorProcessManager(ProcessManager):
                 break
             env_vars.append(f'{m.group(1)}="{m.group(2)}"')
             cmd = cmd[m.end():]
+        for key, value in pd.env.items():
+            env_vars.append(f'{key}="{value}"')
 
         directory = ""
         m2 = re.match(r"^cd\s+(\S+)\s*&&\s*", cmd)

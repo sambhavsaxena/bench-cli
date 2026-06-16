@@ -154,6 +154,7 @@ class BenchConfig:
             threads=data.get("threads", 4),
             timeout=data.get("timeout", 120),
             worker_class=data.get("worker_class", "sync"),
+            malloc_arena_max=data.get("malloc_arena_max", 0),
         )
 
     @staticmethod
@@ -298,6 +299,10 @@ class BenchConfig:
             raise ConfigError(f"gunicorn.timeout must be a positive integer, got '{self.gunicorn.timeout}'.")
         if not self.gunicorn.worker_class:
             raise ConfigError("gunicorn.worker_class must not be empty.")
+        if not isinstance(self.gunicorn.malloc_arena_max, int) or self.gunicorn.malloc_arena_max < 0:
+            raise ConfigError(
+                f"gunicorn.malloc_arena_max must be a non-negative integer, got '{self.gunicorn.malloc_arena_max}'."
+            )
 
     def _validate_mariadb_version(self) -> None:
         if self.mariadb.version and not _VERSION_PATTERN.match(self.mariadb.version):

@@ -151,6 +151,8 @@ class SystemdProcessManager(ProcessManager):
         while m := re.match(r"^([A-Z_][A-Z0-9_]*)=(\S+)\s+", cmd):
             env_lines.append(f"Environment={m.group(1)}={m.group(2)}")
             cmd = cmd[m.end() :]
+        for key, value in pd.env.items():
+            env_lines.append(f"Environment={key}={value}")
 
         working_dir = ""
         if m2 := re.match(r"^cd\s+(\S+)\s*&&\s*", cmd):
