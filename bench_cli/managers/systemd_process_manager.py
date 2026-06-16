@@ -67,6 +67,12 @@ class SystemdProcessManager(ProcessManager):
             check=False,
         )
 
+        subprocess.run(
+            ["sudo", "systemctl", "start", f"user@{os.getuid()}.service"],
+            capture_output=True,
+            check=False,
+        )
+
         env = self._systemctl_env()
         run_command(self._systemctl("daemon-reload"), env=env)
         run_command(self._systemctl("enable", self._target_name()), env=env)

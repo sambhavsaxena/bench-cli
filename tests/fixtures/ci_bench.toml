@@ -22,7 +22,6 @@ root_password = "admin"
 [redis]
 cache_port = 13000
 queue_port = 11000
-socketio_port = 12000
 
 [workers]
 default = 1

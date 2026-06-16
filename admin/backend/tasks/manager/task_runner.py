@@ -160,10 +160,7 @@ class TaskRunner:
         if command == "setup-letsencrypt":
             return [sys.executable, "-m", "admin.backend.tasks.jobs.setup_letsencrypt_task", str(self._bench_root)]
         if command == "bench-init":
-            argv = [sys.executable, "-m", "admin.backend.tasks.jobs.init_task", str(self._bench_root)]
-            if args.get("sudo_password"):
-                argv += ["--sudo-password", args["sudo_password"]]
-            return argv
+            return [sys.executable, "-m", "admin.backend.tasks.jobs.init_task", str(self._bench_root)]
         if command == "new-site-from-backup":
             argv = [sys.executable, "-m", "admin.backend.tasks.jobs.new_site_from_backup_task", str(self._bench_root), args["name"], args["db_file"]]
             if args.get("admin_password"):

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import pwd
+import re
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from bench_cli.platform import get_package_manager, is_linux
 from bench_cli.utils import run_command
+
+_NGINX_CONF = Path("/etc/nginx/nginx.conf")
+_USER_DIRECTIVE = re.compile(r"^[ \t]*user[ \t]+[^;\n]+;", re.MULTILINE)
 
 if TYPE_CHECKING:
     from bench_cli.config.site_config import SiteConfig
@@ -47,17 +52,16 @@ class NginxManager:
     def _generate_site_config(self, site: "SiteConfig", ssl_ready: bool) -> str:
         bench_name = self.bench.config.name
         nginx_config = self.bench.config.nginx
-        redis_config = self.bench.config.redis
         bench_root = self.bench.path
 
         if not site.ssl or not ssl_ready:
             return self._render_http_only_block(
-                site, bench_name, nginx_config, redis_config, bench_root
+                site, bench_name, nginx_config, bench_root
             )
 
         return (
             self._render_http_redirect_block(site, nginx_config)
-            + self._render_https_block(site, bench_name, nginx_config, redis_config, bench_root)
+            + self._render_https_block(site, bench_name, nginx_config, bench_root)
         )
 
     def _render_upstream_block(self, bench_name: str) -> str:
@@ -73,13 +77,12 @@ class NginxManager:
         site: "SiteConfig",
         bench_name: str,
         nginx_config: object,
-        redis_config: object,
         bench_root: Path,
     ) -> str:
         server_name = " ".join(site.all_domains)
         max_body = nginx_config.client_max_body_size
         http_port = nginx_config.http_port
-        socketio_port = redis_config.socketio_port
+        socketio_port = self.bench.config.socketio_port
         webroot = self.bench.config.letsencrypt.webroot_path
 
         return (
@@ -123,13 +126,12 @@ class NginxManager:
         site: "SiteConfig",
         bench_name: str,
         nginx_config: object,
-        redis_config: object,
         bench_root: Path,
     ) -> str:
         server_name = " ".join(site.all_domains)
         https_port = nginx_config.https_port
         max_body = nginx_config.client_max_body_size
-        socketio_port = redis_config.socketio_port
+        socketio_port = self.bench.config.socketio_port
         cert = self.cert_path(site)
         key = Path("/etc/letsencrypt/live") / site.name / "privkey.pem"
 
@@ -281,6 +283,23 @@ class NginxManager:
         if symlink_path.exists() or symlink_path.is_symlink():
             run_command(["sudo", "unlink", str(symlink_path)])
         run_command(["sudo", "ln", "-s", str(source_path), str(symlink_path)])
+        self._set_worker_user()
+
+    def _set_worker_user(self) -> None:
+        """Run nginx workers as the bench owner. Idempotent."""
+        owner = pwd.getpwuid(self.bench.path.stat().st_uid).pw_name
+        directive = f"user {owner};"
+        original = _NGINX_CONF.read_text()
+        if _USER_DIRECTIVE.search(original):
+            updated = _USER_DIRECTIVE.sub(directive, original, count=1)
+        else:
+            updated = directive + "\n" + original
+        if updated == original:
+            return
+        staged = self.bench.config_path / "nginx" / "nginx.conf"
+        staged.write_text(updated)
+        run_command(["sudo", "cp", str(staged), str(_NGINX_CONF)])
+        staged.unlink()
 
     def reload(self) -> None:
         run_command(["sudo", "nginx", "-t"])

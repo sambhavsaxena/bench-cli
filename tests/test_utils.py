@@ -61,7 +61,7 @@ def test_write_toml_preserves_new_app(tmp_path: Path) -> None:
         "apps": [{"name": "frappe", "repo": "https://github.com/frappe/frappe", "branch": "v16"}],
         "sites": [{"name": "site1.localhost", "apps": ["frappe"]}],
         "mariadb": {"root_password": "root"},
-        "redis": {"cache_port": 13000, "queue_port": 11000, "socketio_port": 12000},
+        "redis": {"cache_port": 13000, "queue_port": 11000},
     }
     original["apps"].append(
         {"name": "payments", "repo": "https://github.com/frappe/payments", "branch": "v16"}
@@ -78,7 +78,7 @@ def test_write_toml_file_is_valid_toml(tmp_path: Path) -> None:
         "apps": [{"name": "frappe", "repo": "https://r.co/frappe", "branch": "main"}],
         "sites": [{"name": "s.localhost", "apps": ["frappe"]}],
         "mariadb": {"root_password": "r"},
-        "redis": {"cache_port": 13000, "queue_port": 11000, "socketio_port": 12000},
+        "redis": {"cache_port": 13000, "queue_port": 11000},
     }
     path = tmp_path / "bench.toml"
     write_toml(path, data)

@@ -12,9 +12,8 @@ _BENCH_DIRS = ("apps", "sites", "logs", "config", "pids", "env", "admin", "tasks
 
 
 class InitCommand:
-    def __init__(self, bench: Bench, sudo_password: str = "") -> None:
+    def __init__(self, bench: Bench) -> None:
         self.bench = bench
-        self._sudo_password = sudo_password
         self._step_counter = 0
         self._total_steps = 0
         self._rollback_actions: list[tuple[str, Callable[[], None]]] = []
@@ -53,13 +52,6 @@ class InitCommand:
             if p.exists() or p.is_symlink():
                 shutil.rmtree(p, ignore_errors=True)
 
-    def _remove_sudoers(self) -> None:
-        import getpass
-        import subprocess
-
-        path = f"/etc/sudoers.d/{getpass.getuser()}"
-        subprocess.run(["sudo", "rm", "-f", path], capture_output=True, check=False)
-
     def _remove_nginx_symlink(self) -> None:
         import subprocess
 
@@ -89,12 +81,8 @@ class InitCommand:
 
         production = self.bench.config.production.nginx
         volume_enabled = is_linux()  # ZFS is mandatory on Linux; macOS is dev-only
-        has_sudoers = bool(self._sudo_password)
-        self._total_steps = 10 + (3 if production else 0) + (1 if volume_enabled else 0) + (1 if has_sudoers else 0)
-
-        if has_sudoers:
-            self._step("Configure passwordless sudo")
-            self._setup_sudoers()
+        # Passwordless sudo is configured by install.sh before init ever runs.
+        self._total_steps = 10 + (3 if production else 0) + (1 if volume_enabled else 0)
 
         self._step("Validate bench.toml")
         self.bench.config.validate()
@@ -156,53 +144,6 @@ class InitCommand:
     def _step(self, description: str) -> None:
         self._step_counter += 1
         print(f"[{self._step_counter}/{self._total_steps}] {description}...", flush=True)
-
-    def _setup_sudoers(self) -> None:
-        import getpass
-        import subprocess
-        from pathlib import Path
-
-        username = getpass.getuser()
-        rules = f"{username} ALL=(ALL) NOPASSWD: ALL"
-        content = f"# Frappe bench — managed by bench init, do not edit\n{rules}\n"
-        sudoers_path = f"/etc/sudoers.d/{username}"
-
-        try:
-            existing = Path(sudoers_path).read_text()
-            if all(rule in existing for rule in rules.splitlines()):
-                print(f"  {sudoers_path} already up to date, skipping.")
-                return
-        except OSError:
-            pass
-
-        # Prime sudo's timestamp with the supplied password, then write the file,
-        # Second call won't prompt for password
-        auth = subprocess.run(
-            ["sudo", "-S", "-v"],
-            input=f"{self._sudo_password}\n",
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if auth.returncode != 0:
-            print(f"  Warning: sudo authentication failed — {auth.stderr.strip() or 'incorrect password'}")
-            print("  Sudo operations may prompt for a password during setup.")
-            return
-
-        result = subprocess.run(
-            ["sudo", "tee", sudoers_path],
-            input=content,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            print(f"  Warning: could not write sudoers file — {result.stderr.strip() or 'permission denied'}")
-            print("  Sudo operations may prompt for a password during setup.")
-            return
-        subprocess.run(["sudo", "chmod", "0440", sudoers_path], capture_output=True, check=False)
-        print(f"  Wrote {sudoers_path}")
-        self._on_rollback(sudoers_path, self._remove_sudoers)
 
     def _download_admin_frontend(self) -> None:
         from bench_cli.commands.admin import BuildAdminCommand, _cli_root, download_admin_frontend

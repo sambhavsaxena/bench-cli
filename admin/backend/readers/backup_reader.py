@@ -14,7 +14,7 @@ class BackupFile:
     path: str
     size_bytes: int
     created_at: datetime
-    kind: str  # 'database' | 'files' | 'private-files' | 'other'
+    kind: str  # 'database' | 'public-file' | 'private-file' | 'site_config'
     timestamp: str
 
 
@@ -57,12 +57,12 @@ class BackupReader:
             created_at = datetime.fromtimestamp(path.stat().st_mtime)
 
         if "private-files" in name:
-            kind = "private-files"
+            kind = "private-file"
         elif "files" in name:
-            kind = "files"
+            kind = "public-file"
         elif "database" in name:
             kind = "database"
         else:
-            kind = "other"
+            kind = "site_config"
 
         return BackupFile(filename=name, path=str(path), size_bytes=path.stat().st_size, created_at=created_at, kind=kind, timestamp=ts)

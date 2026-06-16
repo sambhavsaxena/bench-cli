@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 import shutil
+import subprocess
 from typing import TYPE_CHECKING
 
 from bench_cli.config.redis_config import RedisConfig
@@ -18,6 +20,24 @@ class RedisManager:
     def is_installed(self) -> bool:
         return shutil.which("redis-server") is not None
 
+    @staticmethod
+    def installed_version() -> str:
+        """Return the installed redis-server version (e.g. '7.0.11'), or '' if unavailable."""
+        if shutil.which("redis-server") is None:
+            return ""
+        try:
+            result = subprocess.run(
+                ["redis-server", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        # Output: "Redis server v=7.0.11 sha=... malloc=... bits=64 build=..."
+        match = re.search(r"v=(\S+)", result.stdout)
+        return match.group(1) if match else ""
+
     def install(self) -> None:
         if self.is_installed():
             return
@@ -31,40 +51,13 @@ class RedisManager:
         return "redis"
 
     def generate_configs(self) -> None:
-        if self.config.is_single_instance:
-            self._write_single_config()
-        else:
-            self._write_cache_config()
-            self._write_queue_config()
-            self._write_socketio_config()
+        self._write_config("redis_cache.conf", self.config.cache_port)
+        self._write_config("redis_queue.conf", self.config.queue_port)
 
-    def _write_single_config(self) -> None:
+    def _write_config(self, filename: str, port: int) -> None:
         content = (
-            f"port {self.config.cache_port}\n"
+            f"port {port}\n"
             "bind 127.0.0.1\n"
             'save ""\n'
         )
-        (self.bench.config_path / "redis.conf").write_text(content)
-
-    def _write_cache_config(self) -> None:
-        content = (
-            f"port {self.config.cache_port}\n"
-            "bind 127.0.0.1\n"
-            'save ""\n'
-        )
-        (self.bench.config_path / "redis_cache.conf").write_text(content)
-
-    def _write_queue_config(self) -> None:
-        content = (
-            f"port {self.config.queue_port}\n"
-            "bind 127.0.0.1\n"
-            'save ""\n'
-        )
-        (self.bench.config_path / "redis_queue.conf").write_text(content)
-
-    def _write_socketio_config(self) -> None:
-        content = (
-            f"port {self.config.socketio_port}\n"
-            "bind 127.0.0.1\n"
-        )
-        (self.bench.config_path / "redis_socketio.conf").write_text(content)
+        (self.bench.config_path / filename).write_text(content)

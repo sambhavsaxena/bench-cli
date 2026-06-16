@@ -82,7 +82,6 @@ function validateSettings() {
     [form.value.bench.socketio_port, 'SocketIO Port'],
     [form.value.redis.cache_port, 'Redis Cache Port'],
     [form.value.redis.queue_port, 'Redis Queue Port'],
-    [form.value.redis.socketio_port, 'Redis SocketIO Port'],
   ]
   for (const [port, name] of ports) {
     const n = Number(port)
@@ -276,8 +275,7 @@ watch(() => props.modelValue, (val) => {
                 <div class="grid grid-cols-2 gap-4">
                   <FormControl type="number" label="Cache Port" v-model="form.redis.cache_port" />
                   <FormControl type="number" label="Queue Port" v-model="form.redis.queue_port" />
-                  <FormControl type="number" label="SocketIO Port" v-model="form.redis.socketio_port" />
-                  <FormControl label="Version" v-model="form.redis.version" placeholder="e.g. 7" />
+                  <FormControl label="Version" v-model="form.redis.version" disabled placeholder="not installed" />
                 </div>
               </div>
 

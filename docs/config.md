@@ -25,7 +25,7 @@ branch = "version-16"
 host = "localhost"
 port = 3306
 root_password = "root"  # used only during bench init to create databases/users
-# version = "10.6"      # optional — pin to a specific MariaDB version
+# version = "11.8"      # optional — defaults to MariaDB 11.8 LTS (vendor repo on Linux)
 
 # ── Redis ─────────────────────────────────────────────────────────────────────
 [redis]
@@ -113,7 +113,7 @@ Declares the framework app (frappe) to clone during `bench init`. After init, ad
 | `host` | string | no | `localhost` | MariaDB server host. |
 | `port` | int | no | `3306` | MariaDB server port. |
 | `root_password` | string | yes | — | Root password used to create site databases and users during `bench init`. |
-| `version` | string | no | — | MariaDB version to install (e.g. `"10.6"`, `"10.11"`, `"11.4"`). On macOS, selects the `mariadb@<version>` Homebrew formula; on Ubuntu, installs the `mariadb-server-<version>` apt package. Omit to install the package manager's default version. |
+| `version` | string | no | `11.8` | MariaDB version to install (e.g. `"11.8"`, `"11.4"`). On Linux, bench adds MariaDB's official APT repository pinned to this version and installs `mariadb-server` from it; on macOS it selects the `mariadb@<version>` Homebrew formula. Omit to install the default **11.8 LTS** series. |
 
 ### `[redis]`
 

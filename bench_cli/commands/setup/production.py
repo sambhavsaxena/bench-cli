@@ -16,7 +16,6 @@ class SetupProductionCommand:
 
     def run(self) -> None:
         self.bench.config.validate()
-        self._require_production_enabled()
         self._require_linux()
         self._write_dns_multitenancy()
         if self.bench.config.production.process_manager == "systemd":
@@ -30,14 +29,6 @@ class SetupProductionCommand:
         self._build_admin_for_production()
 
         self._print_summary()
-
-    def _require_production_enabled(self) -> None:
-        if not self.bench.config.production.enabled:
-            print(
-                "Error: [production] is not configured in bench.toml. Add a [production] section to enable production setup.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
 
     def _require_linux(self) -> None:
         if not is_linux():

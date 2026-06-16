@@ -486,7 +486,7 @@ onMounted(() => { loadApps(); loadRegistry(); loadUpdateStatus(); loadDefaultBra
           <ErrorMessage :message="editError" />
 
           <!-- Danger zone -->
-          <div class="border-t border-outline-gray-1 pt-3">
+          <div v-if="editApp?.name !== 'frappe'" class="border-t border-outline-gray-1 pt-3">
             <template v-if="!editShowRemove">
               <Button variant="outline" theme="red" @click="editShowRemove = true">Remove App</Button>
             </template>

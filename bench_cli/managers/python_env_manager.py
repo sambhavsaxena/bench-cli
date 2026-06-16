@@ -100,6 +100,16 @@ class PythonEnvManager:
             stream_output=True,
         )
 
+        for frontend_dir in ["frontend", "roster"]:
+            if (app.path / frontend_dir / "package.json").exists():
+                print(f"  Building {frontend_dir} for {app.config.name}...")
+                sys.stdout.flush()
+                run_command(
+                    [get_yarn_bin(), "build"],
+                    cwd=app.path / frontend_dir,
+                    stream_output=True,
+                )
+
     def _try_download_prebuilt_assets(
         self, app: "App", app_public_dir: Path, dist_dir: Path
     ) -> bool:

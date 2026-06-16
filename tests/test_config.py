@@ -23,7 +23,7 @@ MINIMAL_VALID_DATA: dict = {
         {"name": "frappe", "repo": "https://github.com/frappe/frappe", "branch": "version-16"}
     ],
     "mariadb": {"root_password": "root"},
-    "redis": {"cache_port": 13000, "queue_port": 11000, "socketio_port": 12000},
+    "redis": {"cache_port": 13000, "queue_port": 11000},
 }
 
 
@@ -44,7 +44,6 @@ def test_load_minimal_config() -> None:
 
     assert config.redis.cache_port == 13000
     assert config.redis.queue_port == 11000
-    assert config.redis.socketio_port == 12000
 
 
 def test_framework_app_is_first() -> None:
@@ -116,11 +115,12 @@ def test_rule_8_redis_ports_out_of_range() -> None:
     assert "redis.cache_port" in str(exc_info.value)
 
 
-def test_rule_8_redis_ports_not_distinct() -> None:
+def test_rule_8_redis_ports_must_be_distinct() -> None:
     data = copy.deepcopy(MINIMAL_VALID_DATA)
-    data["redis"]["queue_port"] = 13000
-    config = load_from_dict(data)
-    assert config.redis.cache_port == config.redis.queue_port
+    data["redis"]["queue_port"] = 13000  # same as cache_port
+    with pytest.raises(ConfigError) as exc_info:
+        load_from_dict(data)
+    assert "redis.cache_port" in str(exc_info.value) or "redis.queue_port" in str(exc_info.value)
 
 
 def test_rule_9_worker_counts_must_be_positive() -> None:

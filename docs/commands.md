@@ -157,13 +157,16 @@ port 13000
 bind 127.0.0.1
 ```
 
-**Multi-instance mode** (`cache_port`/`queue_port`/`socketio_port`):
+**Multi-instance mode** (`cache_port`/`queue_port`):
 
-**`redis_cache.conf`** / **`redis_queue.conf`** / **`redis_socketio.conf`**
+**`redis_cache.conf`** / **`redis_queue.conf`**
 ```
 port <N>
 bind 127.0.0.1
 ```
+
+There is no dedicated socketio Redis — socketio shares the cache instance, so
+`common_site_config.json` sets `redis_socketio` equal to `redis_cache`.
 
 Existing files are overwritten.
 
@@ -174,7 +177,7 @@ Writes `config/Procfile` with one line per process: web server, socketio, admin 
 Single-instance Redis:
 ```
 web: cd sites && env/bin/bench frappe serve --port 8000 --noreload
-socketio: cd sites && node apps/frappe/socketio.js
+socketio: env/bin/python -m frappe.realtime.server  # python backend (default); runs from bench root
 admin: PYTHONPATH=<cli_root> .admin-venv/bin/python -m admin.backend.server --bench-root <bench> --port 8002
 worker_default_1: cd sites && env/bin/bench frappe worker --queue default
 worker_default_2: cd sites && env/bin/bench frappe worker --queue default
@@ -188,7 +191,6 @@ Multi-instance Redis:
 ...
 redis_cache: redis-server config/redis_cache.conf
 redis_queue: redis-server config/redis_queue.conf
-redis_socketio: redis-server config/redis_socketio.conf
 ```
 
 On completion, prints:

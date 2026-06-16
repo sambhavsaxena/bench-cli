@@ -6,7 +6,7 @@ from flask import Blueprint, Response, current_app, jsonify, request, stream_wit
 
 from admin.backend.tasks.manager.task_reader import TaskReader
 from admin.backend.tasks.manager.task_runner import TaskRunner
-from bench_cli.config.bench_toml_builder import BenchTomlBuilder
+from bench_cli.config.bench_toml_builder import FRAMEWORK_BRANCHES, BenchTomlBuilder
 
 setup_bp = Blueprint("setup", __name__)
 
@@ -15,6 +15,11 @@ setup_bp = Blueprint("setup", __name__)
 def get_config():
     bench_root = Path(current_app.config["BENCH_ROOT"])
     return jsonify(_read_defaults(bench_root))
+
+
+@setup_bp.route("/branches")
+def get_branches():
+    return jsonify({"branches": FRAMEWORK_BRANCHES})
 
 
 @setup_bp.route("/save", methods=["POST"])
@@ -58,13 +63,10 @@ def _validate(data: dict) -> str | None:
 
 @setup_bp.route("/init", methods=["POST"])
 def start_init():
-    import os
-
     from bench_cli.config.bench_config import BenchConfig
     from bench_cli.managers.volume_manager import VolumeManager
 
     bench_root = Path(current_app.config["BENCH_ROOT"])
-    data = request.get_json(silent=True) or {}
 
     # Pre-flight validation so volume sizing errors surface in the wizard
     # instead of failing deep inside the init task.
@@ -76,12 +78,8 @@ def start_init():
     if error := VolumeManager(config.volume).validate_sizes_fit_backing():
         return jsonify({"ok": False, "error": error}), 400
 
-    args = {}
-    sudoers_already_setup = bool(os.environ.get("IS_SUDOERS_SETUP"))
-    if not sudoers_already_setup and data.get("sudo_password"):
-        args["sudo_password"] = data["sudo_password"]
     try:
-        task_id = TaskRunner(bench_root).run("bench-init", args)
+        task_id = TaskRunner(bench_root).run("bench-init", {})
         return jsonify({"ok": True, "task_id": task_id})
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
@@ -110,9 +108,7 @@ def finish_setup():
     # socket, so the kill can't race ahead of the response. The tiny timer
     # just lets the handler thread finish tearing down the connection.
     response = jsonify({"ok": True})
-    response.call_on_close(
-        lambda: threading.Timer(0.1, lambda: os.kill(os.getpid(), signal.SIGTERM)).start()
-    )
+    response.call_on_close(lambda: threading.Timer(0.1, lambda: os.kill(os.getpid(), signal.SIGTERM)).start())
     return response
 
 
@@ -149,14 +145,12 @@ def stream_task(task_id: str):
 
 
 def _read_defaults(bench_root: Path) -> dict:
-    import os
-    from bench_cli.platform import is_linux
     from admin.backend.tasks.manager.task_reader import TaskReader
+    from bench_cli.platform import is_linux
 
     result = {
         "bench_name": bench_root.name,
         "is_linux": is_linux(),
-        "is_sudoers_setup": bool(os.environ.get("IS_SUDOERS_SETUP")),
         **BenchTomlBuilder.DEFAULTS,
     }
     toml_path = bench_root / "bench.toml"
@@ -194,7 +188,13 @@ def _volume_suggestions(toml_path: Path) -> dict:
     if not is_linux():
         return {"available_devices": []}
 
-    from bench_cli.managers.volume_manager import compute_smart_defaults, list_device_choices
+    from bench_cli.managers.volume_manager import (
+        compute_smart_defaults,
+        list_device_choices,
+        rootfs_free_bytes,
+    )
+
+    slider_bounds = {"rootfs_free_bytes": rootfs_free_bytes()}
 
     try:
         import tomllib
@@ -205,8 +205,8 @@ def _volume_suggestions(toml_path: Path) -> dict:
         has_volume_config = False
 
     if has_volume_config:
-        return {"available_devices": list_device_choices()}
-    return compute_smart_defaults()
+        return {"available_devices": list_device_choices(), **slider_bounds}
+    return {**compute_smart_defaults(), **slider_bounds}
 
 
 def _current_name(bench_root: Path) -> str:

@@ -5,7 +5,7 @@ import secrets
 from dataclasses import asdict
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 from admin.backend.tasks.callbacks import new_site_failure_callback, ssl_setup_failure_callback
 from ..validators import validate_cron_expression, validate_site_name
@@ -363,6 +363,21 @@ def list_backups(name: str):
             for s in sets
         ]
     )
+
+
+@sites_bp.route("/<name>/backups/download")
+def download_backup(name: str):
+    bench_root = Path(current_app.config["BENCH_ROOT"])
+    filename = request.args.get("filename", "")
+    if not filename or "/" in filename or "\\" in filename or filename.startswith("."):
+        return jsonify({"error": "Invalid filename."}), 400
+
+    backups_dir = (bench_root / "sites" / name / "private" / "backups").resolve()
+    target = (backups_dir / filename).resolve()
+    if backups_dir not in target.parents or not target.is_file():
+        return jsonify({"error": "Backup file not found."}), 404
+
+    return send_file(target, as_attachment=True, download_name=filename)
 
 
 @sites_bp.route("/<name>/backup-schedule", methods=["GET"])

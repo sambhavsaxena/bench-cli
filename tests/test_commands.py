@@ -21,7 +21,7 @@ def make_bench(tmp_path: Path) -> Bench:
         python_version="3.14",
         apps=[AppConfig(name="frappe", repo="https://github.com/frappe/frappe", branch="version-16")],
         mariadb=MariaDBConfig(root_password="root"),
-        redis=RedisConfig(cache_port=13000, queue_port=11000, socketio_port=12000),
+        redis=RedisConfig(cache_port=13000, queue_port=11000),
         workers=WorkerConfig(default_count=2, short_count=1, long_count=1),
     )
     return Bench(config, tmp_path)

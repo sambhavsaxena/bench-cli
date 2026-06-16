@@ -7,6 +7,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from bench_cli.config.bench_config import BenchConfig
 from bench_cli.config.toml_writer import bench_config_to_toml
+from bench_cli.managers.redis_manager import RedisManager
 from bench_cli.managers.volume_manager import VolumeManager
 from bench_cli.platform import is_linux
 
@@ -22,7 +23,6 @@ _RESTART_KEYS = {
     ("mariadb", "socket_path"),
     ("redis", "cache_port"),
     ("redis", "queue_port"),
-    ("redis", "socketio_port"),
     ("workers", "default"),
     ("workers", "short"),
     ("workers", "long"),
@@ -38,7 +38,7 @@ def _restart_trigger_values(config: BenchConfig) -> dict:
     return {
         "bench": {"python": config.python_version, "http_port": config.http_port, "socketio_port": config.socketio_port},
         "mariadb": {"host": config.mariadb.host, "port": config.mariadb.port, "admin_user": config.mariadb.admin_user, "socket_path": config.mariadb.socket_path},
-        "redis": {"cache_port": config.redis.cache_port, "queue_port": config.redis.queue_port, "socketio_port": config.redis.socketio_port},
+        "redis": {"cache_port": config.redis.cache_port, "queue_port": config.redis.queue_port},
         "workers": {"default": config.workers.default_count, "short": config.workers.short_count, "long": config.workers.long_count},
         "production": {"process_manager": config.production.process_manager},
     }
@@ -94,7 +94,6 @@ class ConfigPatcher:
         redis_config = self.config.redis
         redis_config.cache_port = int(redis.get("cache_port", redis_config.cache_port))
         redis_config.queue_port = int(redis.get("queue_port", redis_config.queue_port))
-        redis_config.socketio_port = int(redis.get("socketio_port", redis_config.socketio_port))
 
     def _apply_workers(self) -> None:
         workers = self.data.get("workers") or {}
@@ -226,7 +225,7 @@ def _build_settings_response(config: BenchConfig) -> dict:
             "socket_path": config.mariadb.socket_path,
             "version": config.mariadb.version or "",
         },
-        "redis": {"cache_port": config.redis.cache_port, "queue_port": config.redis.queue_port, "socketio_port": config.redis.socketio_port, "version": config.redis.version or ""},
+        "redis": {"cache_port": config.redis.cache_port, "queue_port": config.redis.queue_port, "version": RedisManager.installed_version() or config.redis.version or ""},
         "workers": {"default": config.workers.default_count, "short": config.workers.short_count, "long": config.workers.long_count},
         "nginx": {
             "http_port": config.nginx.http_port,

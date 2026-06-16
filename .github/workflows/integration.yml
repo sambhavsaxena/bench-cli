@@ -57,7 +57,6 @@ jobs:
         run: |
           redis-server benches/ci-bench/config/redis_cache.conf --daemonize yes
           redis-server benches/ci-bench/config/redis_queue.conf --daemonize yes
-          redis-server benches/ci-bench/config/redis_socketio.conf --daemonize yes
           sleep 2
 
       - name: Migrate both sites

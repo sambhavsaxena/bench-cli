@@ -25,7 +25,7 @@ def make_bench(tmp_path: Path) -> Bench:
             AppConfig(name="frappe", repo="https://github.com/frappe/frappe", branch="version-16"),
         ],
         mariadb=MariaDBConfig(root_password="root"),
-        redis=RedisConfig(cache_port=13000, queue_port=11000, socketio_port=12000),
+        redis=RedisConfig(cache_port=13000, queue_port=11000),
         workers=WorkerConfig(default_count=2, short_count=1, long_count=1),
     )
     return Bench(config, tmp_path)
@@ -165,12 +165,12 @@ def test_bench_init_apps_comes_from_config(tmp_path: Path) -> None:
 def test_process_definitions_returns_correct_count(tmp_path: Path) -> None:
     bench = make_bench(tmp_path)
     # workers: default=2, short=1, long=1 => 4 worker processes
-    # plus web, socketio, redis_cache, redis_queue, redis_socketio = 5
+    # plus web, socketio, redis_cache, redis_queue = 4
     # plus admin, admin-ui = 2
-    # total = 11
+    # total = 10
     process_manager = ProcessManager(bench)
     definitions = process_manager._process_definitions()
-    assert len(definitions) == 11
+    assert len(definitions) == 10
 
 
 def test_process_definitions_worker_names_are_numbered(tmp_path: Path) -> None:
@@ -191,7 +191,7 @@ def test_process_definitions_includes_redis_processes(tmp_path: Path) -> None:
     names = [pd.name for pd in definitions]
     assert "redis_cache" in names
     assert "redis_queue" in names
-    assert "redis_socketio" in names
+    assert "redis_socketio" not in names
 
 
 def test_process_definitions_order_starts_with_web(tmp_path: Path) -> None:

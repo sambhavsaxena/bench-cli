@@ -177,15 +177,29 @@ async function loadDetail(id) {
 
 function startStream(id) {
   streaming.value = true
+  let volatile = false  // last line is an uncommitted \r progress preview
   es = new EventSource(`/api/tasks/${id}/stream`)
   es.onmessage = (e) => {
     const raw = e.data
+    if (volatile) { rawLines.value.pop(); lines.value.pop(); volatile = false }
     rawLines.value.push(raw)
     lines.value.push(processLine(raw))
     const m = raw.match(/^##\[step:(\w+),/)
     if (m && m[1] !== 'done') expandedSteps.value = new Set([m[1]])
     terminal.value?.scrollToBottom()
   }
+  es.addEventListener('overwrite', (e) => {
+    const raw = e.data
+    if (volatile) {
+      rawLines.value[rawLines.value.length - 1] = raw
+      lines.value[lines.value.length - 1] = processLine(raw)
+    } else {
+      rawLines.value.push(raw)
+      lines.value.push(processLine(raw))
+      volatile = true
+    }
+    terminal.value?.scrollToBottom()
+  })
   es.addEventListener('done', () => {
     streaming.value = false
     es.close(); es = null

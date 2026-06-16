@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { Button, FormControl, FormLabel, Password, ErrorMessage, TextInput } from 'frappe-ui'
+import { Button, FormControl, FormLabel, Password, ErrorMessage, TextInput, Slider } from 'frappe-ui'
 import TerminalOutput from '../components/TerminalOutput.vue'
 import { processLine } from '../utils/ansi.js'
 
@@ -14,17 +14,12 @@ const taskStreaming = ref(false)
 const terminal = ref(null)
 const benchName = ref('')
 const isLinux = ref(true)
-const isSudoersSetup = ref(null)
 
 const form = ref({
-  sudo_password: '',
   mariadb_password: '',
   admin_password: '',
   app_repo: 'https://github.com/frappe/frappe',
-  default_branch: 'version-16',
-  http_port: 8000,
-  socketio_port: 9000,
-  redis_port: 13000,
+  app_branch: 'develop',
   workers_default: 2,
   workers_short: 1,
   workers_long: 1,
@@ -39,11 +34,50 @@ const form = ref({
   production_process_manager: 'none',
 })
 
+// ── framework branch dropdown (fetched from the admin backend) ────────────
+const branchOptions = ref([])
+
+async function fetchBranches() {
+  try {
+    const res = await fetch('/api/setup/branches')
+    const data = await res.json()
+    branchOptions.value = data.branches || []
+  } catch {
+    branchOptions.value = []
+  }
+}
+
+// Keep the configured branch selectable even if it isn't in the fetched list,
+// so the dropdown never silently blanks out the saved value.
+const branchSelectOptions = computed(() => {
+  const options = branchOptions.value.map((b) => ({ label: b, value: b }))
+  if (form.value.app_branch && !branchOptions.value.includes(form.value.app_branch)) {
+    options.unshift({ label: form.value.app_branch, value: form.value.app_branch })
+  }
+  return options
+})
+
 // ── volume smart defaults ─────────────────────────────────────────────────
 const CUSTOM_DEVICE = '__custom__'
 const availableDevices = ref([])
 const customDevice = ref(false)
 const sizesTouched = ref(false)
+
+// ── image-size slider, bounded by total rootfs free space ─────────────────
+const GIB = 1024 ** 3
+const rootfsFreeBytes = ref(0)
+const freeGiB = computed(() => Math.floor(rootfsFreeBytes.value / GIB))
+const imageSizeMaxGiB = computed(() => Math.max(5, freeGiB.value || 100))
+const imageSizeMinGiB = computed(() => Math.min(5, imageSizeMaxGiB.value))
+const imageSliderModel = computed({
+  get() {
+    const n = parseInt(form.value.volume_image_size) || imageSizeMinGiB.value
+    return [Math.min(imageSizeMaxGiB.value, Math.max(imageSizeMinGiB.value, n))]
+  },
+  set(arr) {
+    form.value.volume_image_size = `${arr[0]}G`
+  },
+})
 
 const deviceOptions = computed(() => [
   ...availableDevices.value.map((d) => ({
@@ -123,8 +157,8 @@ async function loadConfig() {
     const data = await res.json()
     benchName.value = data.bench_name || ''
     isLinux.value = data.is_linux !== false
-    isSudoersSetup.value = data.is_sudoers_setup === true
     availableDevices.value = data.available_devices || []
+    rootfsFreeBytes.value = data.rootfs_free_bytes || 0
     for (const key of Object.keys(form.value)) {
       if (data[key] !== undefined) form.value[key] = data[key]
     }
@@ -133,6 +167,7 @@ async function loadConfig() {
       streamTask(`/api/setup/stream/${data.running_init_task_id}`, onInitDone)
     }
   } catch {}
+  fetchBranches()
 }
 
 async function postJson(url, body) {
@@ -165,7 +200,7 @@ function streamTask(url, onDone) {
 }
 
 function nextStep() {
-  if (step.value === 'passwords' && (!form.value.mariadb_password || !form.value.admin_password || (isSudoersSetup.value == false && !form.value.sudo_password) )) {
+  if (step.value === 'passwords' && (!form.value.mariadb_password || !form.value.admin_password)) {
     error.value = 'All password fields are required'
     return
   }
@@ -184,7 +219,7 @@ async function saveConfig() {
 }
 
 async function startInitTask() {
-  const data = await postJson('/api/setup/init', { sudo_password: form.value.sudo_password })
+  const data = await postJson('/api/setup/init', {})
   if (!data.ok) throw new Error(data.error || 'Failed to start initialization.')
   return data.task_id
 }
@@ -306,10 +341,6 @@ function backToConfig() {
       <!-- Body -->
       <div class="flex-1 overflow-y-auto p-5">
         <div v-if="step === 'passwords'" class="flex flex-col gap-4">
-          <div v-if="isSudoersSetup === false" class="space-y-1.5">
-            <FormLabel label="Sudo password" />
-            <Password v-model="form.sudo_password" placeholder="Used once to install system packages" />
-          </div>
           <div class="space-y-1.5">
             <FormLabel label="MariaDB root password" />
             <Password v-model="form.mariadb_password" placeholder="root" />
@@ -322,13 +353,13 @@ function backToConfig() {
         </div>
 
         <div v-else-if="step === 'customize'" class="flex flex-col gap-4">
-          <FormControl label="Frappe branch" v-model="form.app_branch" placeholder="version-16" />
+          <FormControl
+            type="select"
+            label="Frappe branch"
+            v-model="form.app_branch"
+            :options="branchSelectOptions"
+          />
           <FormControl label="Frappe repository" v-model="form.app_repo" />
-          <div class="grid grid-cols-3 gap-2">
-            <FormControl label="HTTP port" v-model="form.http_port" type="number" />
-            <FormControl label="Socket.IO port" v-model="form.socketio_port" type="number" />
-            <FormControl label="Redis port" v-model="form.redis_port" type="number" />
-          </div>
           <div class="space-y-1.5">
             <FormLabel label="Workers" />
             <div class="grid grid-cols-3 gap-2">
@@ -383,9 +414,15 @@ function backToConfig() {
             v-model="form.volume_device"
             placeholder="/dev/sdb"
           />
-          <FormControl v-else label="Image size" v-model="form.volume_image_size" placeholder="60G" />
+          <div v-else-if="form.volume_backing === 'image'" class="space-y-1.5">
+            <div class="flex items-baseline justify-between">
+              <FormLabel label="Image size" />
+              <span class="text-xs text-ink-gray-5">{{ imageSliderModel[0] }} GB of {{ freeGiB }} GB free</span>
+            </div>
+            <Slider v-model="imageSliderModel" :min="imageSizeMinGiB" :max="imageSizeMaxGiB" :step="1" />
+          </div>
           <p v-if="form.volume_backing === 'image'" class="text-xs text-ink-gray-4">
-            A preallocated file of this size will be created at
+            A preallocated {{ form.volume_image_size }} file will be created at
             /var/lib/bench-zfs/{{ form.volume_pool || 'pool' }}.img and used as the ZFS pool.
           </p>
           <div class="grid grid-cols-2 gap-2">

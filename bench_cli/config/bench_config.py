@@ -35,6 +35,7 @@ class BenchConfig:
     apps: List[AppConfig] = field(default_factory=list)
     http_port: int = 8000
     socketio_port: int = 9000
+    socketio_backend: str = "python"
     default_branch: str = ""
     production: ProductionConfig = field(default_factory=ProductionConfig)
     nginx: NginxConfig = field(default_factory=NginxConfig)
@@ -75,6 +76,7 @@ class BenchConfig:
             python_version=bench_data.get("python", ""),
             http_port=bench_data.get("http_port", 8000),
             socketio_port=bench_data.get("socketio_port", 9000),
+            socketio_backend=bench_data.get("socketio_backend", "python"),
             default_branch=bench_data.get("default_branch", ""),
             apps=apps,
             mariadb=mariadb,
@@ -89,18 +91,9 @@ class BenchConfig:
 
     @staticmethod
     def _parse_redis(data: dict) -> RedisConfig:
-        if "port" in data:
-            port = data["port"]
-            return RedisConfig(
-                cache_port=port,
-                queue_port=port,
-                socketio_port=port,
-                version=data.get("version"),
-            )
         return RedisConfig(
             cache_port=data.get("cache_port", 13000),
             queue_port=data.get("queue_port", 11000),
-            socketio_port=data.get("socketio_port", 12000),
             version=data.get("version"),
         )
 
@@ -198,6 +191,7 @@ class BenchConfig:
         self._validate_bench_name()
         self._validate_app_names_unique()
         self._validate_ports()
+        self._validate_socketio_backend()
         self._validate_redis_ports()
         self._validate_worker_counts()
         self._validate_letsencrypt_email()
@@ -241,12 +235,19 @@ class BenchConfig:
             if not (_PORT_MIN <= port <= _PORT_MAX):
                 raise ConfigError(f"{name} {port} is out of range. Must be between {_PORT_MIN} and {_PORT_MAX}.")
 
+    def _validate_socketio_backend(self) -> None:
+        if self.socketio_backend not in ("python", "node"):
+            raise ConfigError(f"bench.socketio_backend '{self.socketio_backend}' is invalid. Must be 'python' or 'node'.")
+
     def _validate_redis_ports(self) -> None:
-        ports = [self.redis.cache_port, self.redis.queue_port, self.redis.socketio_port]
-        port_names = ["redis.cache_port", "redis.queue_port", "redis.socketio_port"]
+        ports = [self.redis.cache_port, self.redis.queue_port]
+        port_names = ["redis.cache_port", "redis.queue_port"]
         for name, port in zip(port_names, ports):
             if not (_REDIS_PORT_MIN <= port <= _REDIS_PORT_MAX):
                 raise ConfigError(f"{name} {port} is out of range. Must be between {_REDIS_PORT_MIN} and {_REDIS_PORT_MAX}.")
+
+        if self.redis.cache_port == self.redis.queue_port:
+            raise ConfigError(f"redis.cache_port and redis.queue_port must be distinct, but both are set to {self.redis.cache_port}.")
 
     def _validate_worker_counts(self) -> None:
         counts = {
@@ -271,7 +272,7 @@ class BenchConfig:
 
     def _validate_mariadb_version(self) -> None:
         if self.mariadb.version and not _VERSION_PATTERN.match(self.mariadb.version):
-            raise ConfigError(f"mariadb.version '{self.mariadb.version}' is invalid. Must be a version string like '10.6' or '11.4'.")
+            raise ConfigError(f"mariadb.version '{self.mariadb.version}' is invalid. Must be a version string like '11.8' or '11.4'.")
 
     def _validate_redis_version(self) -> None:
         if self.redis.version and not _VERSION_PATTERN.match(self.redis.version):
@@ -317,8 +318,7 @@ class BenchConfig:
     def _validate_zfs_size(field_name: str, value: str) -> None:
         if not _ZFS_SIZE_PATTERN.match(value):
             raise ConfigError(
-                f"{field_name} '{value}' is not a valid ZFS size. Must be a positive integer with an "
-                f"optional K/M/G/T suffix — examples: '10G', '512M', '1T'. Decimals and negatives are not allowed."
+                f"{field_name} '{value}' is not a valid ZFS size. Must be a positive integer with an optional K/M/G/T suffix — examples: '10G', '512M', '1T'. Decimals and negatives are not allowed."
             )
 
     @property

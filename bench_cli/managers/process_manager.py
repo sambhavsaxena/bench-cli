@@ -174,34 +174,43 @@ class ProcessManager:
             *worker_defs,
             *[pd for entry in self.bench.config.workers.custom for pd in self._worker_definitions(entry.queue, entry.count)],
         ]
-        if self.bench.config.redis.is_single_instance:
-            defs.append(self._redis_definition("redis", "redis.conf"))
-        else:
-            defs.append(self._redis_definition("redis_cache", "redis_cache.conf"))
-            defs.append(self._redis_definition("redis_queue", "redis_queue.conf"))
-            defs.append(self._redis_definition("redis_socketio", "redis_socketio.conf"))
+        defs.append(self._redis_definition("redis_cache", "redis_cache.conf"))
+        defs.append(self._redis_definition("redis_queue", "redis_queue.conf"))
         return defs
 
     def _process_definitions(self) -> List[ProcessDefinition]:
-        defs = [self._admin_dev_definition() if pd.name == "admin" else pd for pd in self._prod_process_definitions()]
+        defs = [self._to_dev(pd) for pd in self._prod_process_definitions()]
         defs.append(self._admin_frontend_dev_definition())
         return defs
 
-    def _web_definition(self) -> ProcessDefinition:
+    def _to_dev(self, pd: ProcessDefinition) -> ProcessDefinition:
+        """Map a production process definition to its dev-mode variant."""
+        if pd.name == "admin":
+            return self._admin_dev_definition()
+        if pd.name == "web":
+            return self._web_definition(dev=True)
+        return pd
+
+    def _web_definition(self, dev: bool = False) -> ProcessDefinition:
         port = self.bench.config.http_port
         sites = self.bench.sites_path
         python = self.bench.env_path / "bin" / "python"
+        env_prefix = "DEV_SERVER=1 " if dev else ""
         return ProcessDefinition(
             name="web",
-            command=f"cd {sites} && {python} -m frappe.utils.bench_helper frappe serve --port {port} --noreload",
+            command=f"cd {sites} && {env_prefix}{python} -m frappe.utils.bench_helper frappe serve --port {port} --noreload",
             log_file=self.bench.logs_path / "web.log",
         )
 
     def _socketio_definition(self) -> ProcessDefinition:
-        sites = self.bench.sites_path
+        if self.bench.config.socketio_backend == "python":
+            python = self.bench.env_path / "bin" / "python"
+            command = f"cd {self.bench.path} && {python} -m frappe.realtime.server"
+        else:
+            command = f"cd {self.bench.sites_path} && node {self.bench.apps_path}/frappe/socketio.js"
         return ProcessDefinition(
             name="socketio",
-            command=f"cd {sites} && node {self.bench.apps_path}/frappe/socketio.js",
+            command=command,
             log_file=self.bench.logs_path / "socketio.log",
         )
 
