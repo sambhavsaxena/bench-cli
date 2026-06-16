@@ -85,10 +85,9 @@ root_password = "your_root_password"
 [redis]
 port = 13000
 
-[workers]
-default = 2
-short = 1
-long = 1
+[[workers]]
+queues = ["default", "short", "long"]
+count = 1
 
 [admin]
 port = 8002

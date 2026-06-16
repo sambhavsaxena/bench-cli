@@ -710,10 +710,17 @@ cache_port = 13000
 queue_port = 11000
 socketio_port = 12000
 
-[workers]
-default = 4
-short = 2
-long = 1
+[[workers]]
+queues = ["default"]
+count = 4
+
+[[workers]]
+queues = ["short"]
+count = 2
+
+[[workers]]
+queues = ["long"]
+count = 1
 
 [admin]
 port = 8002

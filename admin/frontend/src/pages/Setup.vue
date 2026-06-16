@@ -20,9 +20,7 @@ const form = ref({
   admin_password: '',
   app_repo: 'https://github.com/frappe/frappe',
   app_branch: 'develop',
-  workers_default: 2,
-  workers_short: 1,
-  workers_long: 1,
+  workers: [{ queues: 'default, short, long', count: 1 }],
   volume_pool: 'bench-pool',
   volume_backing: 'device',
   volume_device: '',
@@ -33,6 +31,14 @@ const form = ref({
   volume_mariadb_quota: '20G',
   production_process_manager: 'none',
 })
+
+function addWorkerGroup() {
+  form.value.workers.push({ queues: '', count: 1 })
+}
+
+function removeWorkerGroup(i) {
+  form.value.workers.splice(i, 1)
+}
 
 // ── framework branch dropdown (fetched from the admin backend) ────────────
 const branchOptions = ref([])
@@ -183,6 +189,8 @@ async function loadConfig() {
     for (const key of Object.keys(form.value)) {
       if (data[key] !== undefined) form.value[key] = data[key]
     }
+    if (Array.isArray(data.workers) && data.workers.length)
+      form.value.workers = data.workers.map(g => ({ queues: (g.queues || []).join(', '), count: g.count }))
     if (data.running_init_task_id) {
       step.value = 'running'
       streamTask(`/api/setup/stream/${data.running_init_task_id}`, onInitDone)
@@ -399,20 +407,24 @@ function backToConfig() {
           <FormControl label="Frappe repository" v-model="form.app_repo" />
           <div class="space-y-1.5">
             <FormLabel label="Workers" />
-            <div class="grid grid-cols-3 gap-2">
-              <div class="space-y-1">
-                <FormLabel label="Default" />
-                <TextInput v-model="form.workers_default" type="number" />
-              </div>
-              <div class="space-y-1">
-                <FormLabel label="Short" />
-                <TextInput v-model="form.workers_short" type="number" />
-              </div>
-              <div class="space-y-1">
-                <FormLabel label="Long" />
-                <TextInput v-model="form.workers_long" type="number" />
-              </div>
+            <p class="text-xs text-ink-gray-5">
+              Each group spawns <span class="font-medium">count</span> workers for the listed queues.
+            </p>
+            <div
+              v-for="(group, i) in form.workers"
+              :key="i"
+              class="grid grid-cols-[1fr_5rem_auto] items-center gap-2"
+            >
+              <TextInput v-model="group.queues" placeholder="default, short, long" />
+              <TextInput v-model.number="group.count" type="number" />
+              <Button
+                variant="ghost"
+                icon="trash-2"
+                :disabled="form.workers.length === 1"
+                @click="removeWorkerGroup(i)"
+              />
             </div>
+            <Button variant="subtle" icon-left="plus" label="Add group" @click="addWorkerGroup" />
           </div>
           <FormControl
             type="select"

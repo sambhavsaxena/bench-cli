@@ -493,7 +493,7 @@ def test_drop_site_removes_site_from_bench_toml(tmp_path: Path) -> None:
         "[[sites]]\nname = \"site2.localhost\"\n\n"
         "[mariadb]\nhost = \"localhost\"\nport = 3306\nroot_password = \"root\"\n\n"
         "[redis]\nport = 13000\n\n"
-        "[workers]\ndefault = 2\nshort = 1\nlong = 1\n"
+        '[[workers]]\nqueues = ["default", "short", "long"]\ncount = 1\n'
     )
 
     cmd = DropSiteCommand(bench, "site1.localhost")
@@ -516,7 +516,7 @@ def test_drop_site_removes_from_toml_when_no_sites_key(tmp_path: Path) -> None:
         "[[apps]]\nname = \"frappe\"\nrepo = \"...\"\nbranch = \"version-16\"\n\n"
         "[mariadb]\nhost = \"localhost\"\nport = 3306\nroot_password = \"root\"\n\n"
         "[redis]\nport = 13000\n\n"
-        "[workers]\ndefault = 2\nshort = 1\nlong = 1\n"
+        '[[workers]]\nqueues = ["default", "short", "long"]\ncount = 1\n'
     )
 
     cmd = DropSiteCommand(bench, "nonexistent")

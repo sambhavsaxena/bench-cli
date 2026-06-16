@@ -68,12 +68,27 @@ async function load() {
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
     isLinux.value = data.is_linux === true
+    if (Array.isArray(data.workers))
+      data.workers = data.workers.map(g => ({ queues: (g.queues || []).join(', '), count: g.count }))
     form.value = data
   } catch (e) {
     loadError.value = e.message
   } finally {
     loading.value = false
   }
+}
+
+function queueList(q) {
+  if (Array.isArray(q)) return q.map(s => String(s).trim()).filter(Boolean)
+  return String(q || '').split(',').map(s => s.trim()).filter(Boolean)
+}
+
+function addWorkerGroup() {
+  form.value.workers.push({ queues: '', count: 1 })
+}
+
+function removeWorkerGroup(i) {
+  form.value.workers.splice(i, 1)
 }
 
 function validateSettings() {
@@ -88,10 +103,14 @@ function validateSettings() {
     if (!Number.isInteger(n) || n < 1 || n > 65535)
       return `${name} must be between 1 and 65535.`
   }
-  for (const [key, label] of [['default', 'Default'], ['short', 'Short'], ['long', 'Long']]) {
-    const n = Number(form.value.workers[key])
+  if (!Array.isArray(form.value.workers) || form.value.workers.length === 0)
+    return 'Add at least one worker group.'
+  for (const [i, group] of form.value.workers.entries()) {
+    if (!queueList(group.queues).length)
+      return `Worker group ${i + 1} needs at least one queue.`
+    const n = Number(group.count)
     if (!Number.isInteger(n) || n < 1)
-      return `${label} workers must be at least 1.`
+      return `Worker group ${i + 1} count must be at least 1.`
   }
   const email = (form.value.letsencrypt.email || '').trim()
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
@@ -281,24 +300,29 @@ watch(() => props.modelValue, (val) => {
 
               <!-- Workers -->
               <div v-else-if="activeTab === 'workers'" class="flex flex-col gap-4">
-                <div class="grid grid-cols-3 gap-4">
-              <FormControl
-                type="number"
-                label="Default Workers"
-                v-model.number="form.workers.default"
-              />
-
-              <FormControl
-                type="number"
-                label="Short Workers"
-                v-model.number="form.workers.short"
-              />
-
-              <FormControl
-                type="number"
-                label="Long Workers"
-                v-model.number="form.workers.long"
-              />
+                <p class="text-sm text-ink-gray-6">
+                  Each group spawns <span class="font-medium">count</span> workers listening to the listed queues.
+                </p>
+                <div
+                  v-for="(group, i) in form.workers"
+                  :key="i"
+                  class="grid grid-cols-[1fr_7rem_auto] items-end gap-3"
+                >
+                  <FormControl
+                    label="Queues"
+                    v-model="group.queues"
+                    placeholder="default, short, long"
+                  />
+                  <FormControl type="number" label="Count" v-model.number="group.count" />
+                  <Button
+                    variant="ghost"
+                    icon="trash-2"
+                    :disabled="form.workers.length === 1"
+                    @click="removeWorkerGroup(i)"
+                  />
+                </div>
+                <div>
+                  <Button variant="subtle" icon-left="plus" label="Add group" @click="addWorkerGroup" />
                 </div>
               </div>
 

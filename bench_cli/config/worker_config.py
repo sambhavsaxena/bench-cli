@@ -13,8 +13,6 @@ class WorkerGroup:
 class WorkerConfig:
     groups: list[WorkerGroup] = field(
         default_factory=lambda: [
-            WorkerGroup(queues=["default"], count=2),
-            WorkerGroup(queues=["short"], count=1),
-            WorkerGroup(queues=["long"], count=1),
+            WorkerGroup(queues=["default", "short", "long"], count=1),
         ]
     )

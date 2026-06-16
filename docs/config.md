@@ -37,10 +37,10 @@ port = 13000            # single Redis instance for all services (simplest)
 # socketio_port = 12000
 
 # ── Workers ───────────────────────────────────────────────────────────────────
-[workers]
-default = 2             # handles normal background jobs
-short = 1               # handles quick jobs (< 5 seconds expected)
-long = 1                # handles slow/bulk jobs
+# Each [[workers]] group spawns `count` workers listening to `queues`.
+[[workers]]
+queues = ["default", "short", "long"]   # one worker handling all three queues
+count = 1
 
 # ── Nginx (production only) ───────────────────────────────────────────────────
 [nginx]
@@ -136,13 +136,31 @@ Declares the framework app (frappe) to clone during `bench init`. After init, ad
 
 In single-instance mode, one `redis` process appears in the Procfile and one `redis.conf` is written to `config/`. In multi-instance mode, three separate processes (`redis_cache`, `redis_queue`, `redis_socketio`) and three config files are generated. All ports must be in the range 1024–65535.
 
-### `[workers]`
+### `[[workers]]`
+
+An array of worker groups. Each group spawns `count` worker processes that
+listen to the queues in `queues`. Omitting the table entirely defaults to a
+single worker handling all three standard queues (`default`, `short`, `long`).
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `default` | int | no | `2` | Number of default-queue worker processes. |
-| `short` | int | no | `1` | Number of short-queue worker processes. |
-| `long` | int | no | `1` | Number of long-queue worker processes. |
+| `queues` | list of strings | yes | — | Queues this group's workers listen to (e.g. `["default", "short", "long"]`). |
+| `count` | int | yes | — | Number of worker processes to spawn for this group (≥ 1). |
+
+```toml
+# One worker per queue:
+[[workers]]
+queues = ["default"]
+count = 2
+
+[[workers]]
+queues = ["short"]
+count = 1
+
+[[workers]]
+queues = ["long"]
+count = 1
+```
 
 ### `[production]`
 

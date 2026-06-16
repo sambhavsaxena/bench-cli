@@ -67,7 +67,7 @@ class BenchConfig:
         ]
         mariadb = MariaDBConfig(**data.get("mariadb", {}))
         redis = cls._parse_redis(data.get("redis", {}))
-        workers = cls._parse_workers(data.get("workers", {}))
+        workers = cls._parse_workers(data.get("workers", []))
         production = cls._parse_production(data.get("production"))
         nginx = cls._parse_nginx(data.get("nginx", {}))
         gunicorn = cls._parse_gunicorn(data.get("gunicorn", {}), bench_data.get("http_port", 8000))
@@ -102,27 +102,17 @@ class BenchConfig:
         )
 
     @staticmethod
-    def _parse_workers(data: dict | list) -> WorkerConfig:
-        # New explicit syntax: [[workers]] array-of-tables.
-        if isinstance(data, list):
-            groups = [
-                WorkerGroup(
-                    queues=entry.get("queues", [entry.get("queue", "default")]),
-                    count=entry.get("count", 1),
-                )
-                for entry in data
-            ]
-            return WorkerConfig(groups=groups)
-
-        # Legacy dict syntax: [workers] with default/short/long/custom keys.
-        groups = []
-        for queue, count in (
-            ("default", data.get("default", 2)),
-            ("short", data.get("short", 1)),
-            ("long", data.get("long", 1)),
-        ):
-            if count > 0:
-                groups.append(WorkerGroup(queues=[queue], count=count))
+    def _parse_workers(data: list) -> WorkerConfig:
+        # [[workers]] array-of-tables: each group lists queues and a count.
+        if not isinstance(data, list) or not data:
+            return WorkerConfig()
+        groups = [
+            WorkerGroup(
+                queues=entry.get("queues", [entry.get("queue", "default")]),
+                count=entry.get("count", 1),
+            )
+            for entry in data
+        ]
         return WorkerConfig(groups=groups)
 
     @staticmethod

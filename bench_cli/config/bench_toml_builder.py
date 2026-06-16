@@ -6,6 +6,7 @@ from pathlib import Path
 
 from bench_cli.config.bench_config import BenchConfig
 from bench_cli.config.toml_writer import bench_config_to_toml
+from bench_cli.config.worker_config import WorkerConfig, WorkerGroup
 
 # The single registry of wizard-editable settings: flat key -> attribute path on
 # BenchConfig. Defaults and serialization live in the dataclasses and
@@ -78,7 +79,29 @@ def _apply_setting(config: BenchConfig, key: str, value) -> None:
         config.apps[0].repo = str(value)
     elif key == "app_branch":
         config.apps[0].branch = str(value)
+    elif key == "workers":
+        config.workers.groups = _workers_to_groups(value)
     # unknown keys (wizard extras like is_linux) are ignored
+
+
+def _workers_to_groups(value) -> list[WorkerGroup]:
+    """Build worker groups from the wizard's ``[{queues, count}, ...]`` list.
+
+    ``queues`` may arrive as a list or a comma-separated string. Empty/invalid
+    input falls back to the default groups.
+    """
+    if not isinstance(value, list) or not value:
+        return WorkerConfig().groups
+    groups = []
+    for entry in value:
+        queues = entry.get("queues") or []
+        if isinstance(queues, str):
+            queues = [q.strip() for q in queues.split(",") if q.strip()]
+        queues = [str(q) for q in queues if str(q).strip()]
+        if not queues:
+            continue
+        groups.append(WorkerGroup(queues=queues, count=max(1, int(entry.get("count", 1)))))
+    return groups or WorkerConfig().groups
 
 
 def _flatten(config: BenchConfig) -> dict:
@@ -86,6 +109,7 @@ def _flatten(config: BenchConfig) -> dict:
     app = config.framework_app
     settings["app_repo"] = app.repo
     settings["app_branch"] = app.branch
+    settings["workers"] = [{"queues": list(g.queues), "count": g.count} for g in config.workers.groups]
     return settings
 
 
