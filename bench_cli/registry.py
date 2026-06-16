@@ -57,15 +57,17 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     # Create a sub-parser action for each command group up front.
+    # `help=` populates the parent listing; `description=` populates the
+    # subcommand's own `--help` page — set both so text shows in both places.
     group_subparsers: dict[str, argparse._SubParsersAction] = {}
     for gname, ghelp in GROUP_HELP.items():
-        gparser = sub.add_parser(gname, help=ghelp)
+        gparser = sub.add_parser(gname, help=ghelp, description=ghelp)
         gparser.set_defaults(_help_printer=gparser.print_help)
         group_subparsers[gname] = gparser.add_subparsers(dest=f"{gname}_command")
 
     for cls in _discover():
         target = group_subparsers[cls.group] if cls.group else sub
-        cmd_parser = target.add_parser(cls.name, help=cls.help)
+        cmd_parser = target.add_parser(cls.name, help=cls.help, description=cls.help)
         cls.add_arguments(cmd_parser)
         cmd_parser.set_defaults(_command_cls=cls)
 
