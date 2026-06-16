@@ -81,6 +81,45 @@ class MariaDBManager:
             check=True,
         )
 
+    def check_credentials(self, password: str | None = None) -> bool:
+        """Return True if we can connect as the admin user with the given
+        password (defaults to the configured root password)."""
+        import pymysql
+
+        try:
+            connection = self._connect(password)
+        except pymysql.Error:
+            return False
+        connection.close()
+        return True
+
+    def secure_installation(self) -> None:
+        """
+        Set the root password and apply some hardening.
+        Will only work after fresh installs
+        """
+        if self.check_credentials():
+            return
+        user = self.config.admin_user
+        statements = [
+            f"ALTER USER '{user}'@'localhost' IDENTIFIED BY {self._sql_quote(self.config.root_password)};",
+            "DROP USER IF EXISTS ''@'localhost';",
+            "DROP USER IF EXISTS ''@'%';",
+            "DROP DATABASE IF EXISTS test;",
+            "FLUSH PRIVILEGES;",
+        ]
+        self._run_sql_as_superuser("\n".join(statements))
+
+    def _run_sql_as_superuser(self, sql: str) -> None:
+        cmd = ["mariadb"] if is_macos() else ["sudo", "mariadb"]
+        subprocess.run(cmd, input=sql, text=True, check=True)
+
+    @staticmethod
+    def _sql_quote(value: str) -> str:
+        """Quote a value as a MariaDB string literal (escaping \\ and ')."""
+        escaped = value.replace("\\", "\\\\").replace("'", "\\'")
+        return f"'{escaped}'"
+
     def kill_process(self, process_id: int) -> None:
         connection = self._connect()
         try:
@@ -101,14 +140,14 @@ class MariaDBManager:
                 cursor.execute("UNLOCK TABLES")
             connection.close()
 
-    def _connect(self):
+    def _connect(self, password: str | None = None):
         import pymysql
 
         return pymysql.connect(
             host=self.config.host,
             port=self.config.port,
             user=self.config.admin_user,
-            password=self.config.root_password,
+            password=self.config.root_password if password is None else password,
             unix_socket=self._detect_socket() or None,
         )
 
