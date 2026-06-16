@@ -32,7 +32,7 @@ jobs:
       - name: Install yarn and bench
         run: |
           npm install -g yarn
-          pip install -e ".[test]"
+          pip install -e ".[test,admin]"
 
       - name: Create bench
         run: |

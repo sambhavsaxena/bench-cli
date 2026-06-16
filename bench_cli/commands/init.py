@@ -166,8 +166,16 @@ class InitCommand:
             pkg.update()
 
         mariadb_manager = MariaDBManager(self.bench.config.mariadb)
+        freshly_installed = not mariadb_manager.is_installed()
         mariadb_manager.install()
         mariadb_manager.start()
+        if freshly_installed:
+            mariadb_manager.secure_installation()
+        elif not mariadb_manager.check_credentials():
+            raise RuntimeError(
+                "MariaDB is already installed but the configured root password is incorrect. "
+                "Fix mariadb.root_password in bench.toml (or secure the existing MariaDB) and retry."
+            )
         RedisManager(self.bench.config.redis, self.bench).install()
         if is_linux():
             pkg = get_package_manager()

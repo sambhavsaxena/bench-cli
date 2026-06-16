@@ -47,6 +47,27 @@ def save_config():
     return jsonify({"ok": True})
 
 
+@setup_bp.route("/validate-mariadb", methods=["POST"])
+def validate_mariadb():
+    """Tell the wizard whether the entered root password will work.
+
+    - not installed `secure_installation`function will set this password
+    - installed+valid everything is fine
+    - installed+invalid panic
+    """
+    from bench_cli.config.mariadb_config import MariaDBConfig
+    from bench_cli.managers.mariadb_manager import MariaDBManager
+
+    data = request.get_json(silent=True) or {}
+    password = data.get("mariadb_password", "")
+    manager = MariaDBManager(MariaDBConfig(root_password=password))
+    if not manager.is_installed():
+        return jsonify({"state": "will_install"})
+    if manager.check_credentials(password):
+        return jsonify({"state": "valid"})
+    return jsonify({"state": "invalid"})
+
+
 def _validate(data: dict) -> str | None:
     for field in ("mariadb_password", "admin_password"):
         if not data.get(field):
