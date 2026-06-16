@@ -6,7 +6,7 @@ from flask import Blueprint, Response, current_app, jsonify, request, stream_wit
 
 from admin.backend.tasks.manager.task_reader import TaskReader
 from admin.backend.tasks.manager.task_runner import TaskRunner
-from bench_cli.config.bench_toml_builder import FRAMEWORK_BRANCHES, BenchTomlBuilder
+from bench_cli.config.bench_toml_builder import FRAMEWORK_BRANCHES, BenchTomlBuilder, current_port_offset
 
 setup_bp = Blueprint("setup", __name__)
 
@@ -42,7 +42,7 @@ def save_config():
             pass
 
     settings = {**existing, **data, "admin_enabled": True}
-    content = BenchTomlBuilder(_current_name(bench_root), settings).render()
+    content = BenchTomlBuilder(_current_name(bench_root), settings, port_offset=current_port_offset(toml_path)).render()
     toml_path.write_text(content)
     return jsonify({"ok": True})
 

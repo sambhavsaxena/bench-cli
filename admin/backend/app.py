@@ -28,7 +28,7 @@ from bench_cli.config.bench_config import BenchConfig
 from bench_cli.exceptions import BenchError, ConfigError
 
 _STATIC_DIR = Path(__file__).parent / "static"
-_OPEN_PATHS = {"/api/status", "/api/login", "/api/logout", "/api/benches/"}
+_OPEN_PATHS = {"/api/status", "/api/login", "/api/logout"}
 _NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 

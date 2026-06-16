@@ -65,9 +65,10 @@ class NginxManager:
         )
 
     def _render_upstream_block(self, bench_name: str) -> str:
+        http_port = self.bench.config.http_port
         return (
             f"upstream bench-{bench_name} {{\n"
-            f"    server 127.0.0.1:8000;\n"
+            f"    server 127.0.0.1:{http_port};\n"
             f"    keepalive 32;\n"
             f"}}\n\n"
         )
