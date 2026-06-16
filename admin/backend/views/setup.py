@@ -72,7 +72,9 @@ def _validate(data: dict) -> str | None:
     for field in ("mariadb_password", "admin_password"):
         if not data.get(field):
             return f"{field} is required"
-    if data.get("volume_pool"):
+    if data.get("volume_enabled", True):
+        if not data.get("volume_pool"):
+            return "volume_pool is required"
         backing = data.get("volume_backing", "auto")
         if backing == "device" and not data.get("volume_device"):
             return "volume_device is required when volume backing is a block device"

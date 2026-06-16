@@ -20,6 +20,7 @@ const form = ref({
   admin_password: '',
   app_repo: 'https://github.com/frappe/frappe',
   app_branch: 'develop',
+  volume_enabled: false,
   workers: [{ queues: 'default, short, long', count: 1 }],
   volume_pool: 'bench-pool',
   volume_backing: 'device',
@@ -153,7 +154,9 @@ watch(
 )
 
 const configSteps = computed(() =>
-  isLinux.value ? ['passwords', 'customize', 'volume'] : ['passwords', 'customize']
+  isLinux.value && form.value.volume_enabled
+    ? ['passwords', 'customize', 'volume']
+    : ['passwords', 'customize']
 )
 const stepNumber = computed(() => configSteps.value.indexOf(step.value) + 1)
 const isConfiguring = computed(() => stepNumber.value > 0)
@@ -279,7 +282,7 @@ function parseSize(value) {
 }
 
 function validateVolume() {
-  if (!isLinux.value) return null
+  if (!isLinux.value || !form.value.volume_enabled) return null
   if (!form.value.volume_pool) return 'Pool name is required.'
   const sizeHint = 'must be a positive integer with a K/M/G/T suffix (e.g. 10G)'
   let imageSize = null
@@ -435,6 +438,12 @@ function backToConfig() {
               { label: 'Supervisor — bench-owned supervisord, no root needed', value: 'supervisor' },
               { label: 'Systemd — systemctl --user units', value: 'systemd' },
             ]"
+          />
+          <FormControl
+            v-if="isLinux"
+            type="checkbox"
+            label="Enable ZFS volume management"
+            v-model="form.volume_enabled"
           />
           <ErrorMessage v-if="error" :message="error" />
         </div>

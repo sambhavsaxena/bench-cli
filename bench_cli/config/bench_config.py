@@ -217,7 +217,8 @@ class BenchConfig:
         self._validate_gunicorn()
         self._validate_mariadb_version()
         self._validate_redis_version()
-        self._validate_volume()
+        if self.volume.enabled:
+            self._validate_volume()
 
     def _validate_required_fields(self) -> None:
         if not self.name:
