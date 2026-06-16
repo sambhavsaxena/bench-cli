@@ -26,7 +26,7 @@ const form = ref({
   bench: { name: '', python: '', http_port: 8000, socketio_port: 9000, default_branch: '' },
   mariadb: { host: 'localhost', port: 3306, admin_user: 'root', socket_path: '', version: '' },
   redis: { cache_port: 13000, queue_port: 11000, version: '' },
-  workers: { default: 2, short: 1, long: 1 },
+  workers: [{ queues: 'default, short, long', count: 1 }],
   nginx: { http_port: 80, https_port: 443, config_dir: '/etc/nginx/conf.d', worker_processes: 'auto', client_max_body_size: '50m' },
   letsencrypt: { email: '', webroot_path: '/var/www/letsencrypt' },
   production: { enabled: false, nginx: false, lightweight: false },
@@ -38,12 +38,28 @@ async function load() {
   try {
     const res = await fetch('/api/settings/')
     if (!res.ok) throw new Error(`${res.status}`)
-    form.value = await res.json()
+    const data = await res.json()
+    if (Array.isArray(data.workers))
+      data.workers = data.workers.map(g => ({ queues: (g.queues || []).join(', '), count: g.count }))
+    form.value = data
   } catch (e) {
     loadError.value = e.message
   } finally {
     loading.value = false
   }
+}
+
+function queueList(q) {
+  if (Array.isArray(q)) return q.map(s => String(s).trim()).filter(Boolean)
+  return String(q || '').split(',').map(s => s.trim()).filter(Boolean)
+}
+
+function addWorkerGroup() {
+  form.value.workers.push({ queues: '', count: 1 })
+}
+
+function removeWorkerGroup(i) {
+  form.value.workers.splice(i, 1)
 }
 
 function validateSettings() {
@@ -61,10 +77,14 @@ function validateSettings() {
     if (!Number.isInteger(n) || n < 1 || n > 65535)
       return `${name} must be between 1 and 65535.`
   }
-  for (const [key, label] of [['default', 'Default'], ['short', 'Short'], ['long', 'Long']]) {
-    const n = Number(form.value.workers[key])
+  if (!Array.isArray(form.value.workers) || form.value.workers.length === 0)
+    return 'Add at least one worker group.'
+  for (const [i, group] of form.value.workers.entries()) {
+    if (!queueList(group.queues).length)
+      return `Worker group ${i + 1} needs at least one queue.`
+    const n = Number(group.count)
     if (!Number.isInteger(n) || n < 1)
-      return `${label} workers must be at least 1.`
+      return `Worker group ${i + 1} count must be at least 1.`
   }
   const email = (form.value.letsencrypt.email || '').trim()
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
@@ -200,10 +220,25 @@ onMounted(load)
       <!-- Workers -->
       <div class="flex flex-col gap-4">
         <h3 class="font-semibold text-ink-gray-8">Workers</h3>
-        <div class="grid grid-cols-3 gap-4">
-          <FormControl type="number" label="Default Workers" v-model="form.workers.default" />
-          <FormControl type="number" label="Short Workers" v-model="form.workers.short" />
-          <FormControl type="number" label="Long Workers" v-model="form.workers.long" />
+        <p class="text-sm text-ink-gray-6">
+          Each group spawns <span class="font-medium">count</span> workers listening to the listed queues.
+        </p>
+        <div
+          v-for="(group, i) in form.workers"
+          :key="i"
+          class="grid grid-cols-[1fr_7rem_auto] items-end gap-3"
+        >
+          <FormControl :label="i === 0 ? 'Queues' : undefined" v-model="group.queues" placeholder="default, short, long" />
+          <FormControl type="number" :min="1" :label="i === 0 ? 'Count' : undefined" v-model.number="group.count" />
+          <Button
+            variant="ghost"
+            icon="trash-2"
+            :disabled="form.workers.length === 1"
+            @click="removeWorkerGroup(i)"
+          />
+        </div>
+        <div>
+          <Button variant="subtle" icon-left="plus" label="Add group" @click="addWorkerGroup" />
         </div>
       </div>
 

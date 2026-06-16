@@ -6,13 +6,14 @@ from typing import List
 
 from bench_cli.config.admin_config import AdminConfig
 from bench_cli.config.app_config import AppConfig
+from bench_cli.config.gunicorn_config import GunicornConfig
 from bench_cli.config.letsencrypt_config import LetsEncryptConfig
 from bench_cli.config.mariadb_config import MariaDBConfig
 from bench_cli.config.nginx_config import NginxConfig
 from bench_cli.config.production_config import ProductionConfig
 from bench_cli.config.redis_config import RedisConfig
 from bench_cli.config.volume_config import BenchesDatasetConfig, ImageConfig, MariaDBDatasetConfig, VolumeConfig
-from bench_cli.config.worker_config import CustomWorkerEntry, WorkerConfig
+from bench_cli.config.worker_config import WorkerConfig, WorkerGroup
 from bench_cli.exceptions import ConfigError
 
 _BENCH_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
@@ -39,6 +40,7 @@ class BenchConfig:
     default_branch: str = ""
     production: ProductionConfig = field(default_factory=ProductionConfig)
     nginx: NginxConfig = field(default_factory=NginxConfig)
+    gunicorn: GunicornConfig = field(default_factory=GunicornConfig)
     letsencrypt: LetsEncryptConfig = field(default_factory=LetsEncryptConfig)
     admin: AdminConfig = field(default_factory=AdminConfig)
     volume: VolumeConfig = field(default_factory=VolumeConfig)
@@ -65,9 +67,10 @@ class BenchConfig:
         ]
         mariadb = MariaDBConfig(**data.get("mariadb", {}))
         redis = cls._parse_redis(data.get("redis", {}))
-        workers = cls._parse_workers(data.get("workers", {}))
+        workers = cls._parse_workers(data.get("workers", []))
         production = cls._parse_production(data.get("production"))
         nginx = cls._parse_nginx(data.get("nginx", {}))
+        gunicorn = cls._parse_gunicorn(data.get("gunicorn", {}), bench_data.get("http_port", 8000))
         letsencrypt = cls._parse_letsencrypt(data.get("letsencrypt", {}))
         admin = cls._parse_admin(data.get("admin", {}))
         volume = cls._parse_volume(data.get("volume"))
@@ -84,6 +87,7 @@ class BenchConfig:
             workers=workers,
             production=production,
             nginx=nginx,
+            gunicorn=gunicorn,
             letsencrypt=letsencrypt,
             admin=admin,
             volume=volume,
@@ -98,21 +102,18 @@ class BenchConfig:
         )
 
     @staticmethod
-    def _parse_workers(data: dict) -> WorkerConfig:
-        custom = [
-            CustomWorkerEntry(
-                queue=entry["queue"],
+    def _parse_workers(data: list) -> WorkerConfig:
+        # [[workers]] array-of-tables: each group lists queues and a count.
+        if not isinstance(data, list) or not data:
+            return WorkerConfig()
+        groups = [
+            WorkerGroup(
+                queues=entry.get("queues", [entry.get("queue", "default")]),
                 count=entry.get("count", 1),
-                timeout=entry.get("timeout", 300),
             )
-            for entry in data.get("custom", [])
+            for entry in data
         ]
-        return WorkerConfig(
-            default_count=data.get("default", 2),
-            short_count=data.get("short", 1),
-            long_count=data.get("long", 1),
-            custom=custom,
-        )
+        return WorkerConfig(groups=groups)
 
     @staticmethod
     def _parse_production(data: dict | None) -> ProductionConfig:
@@ -122,13 +123,18 @@ class BenchConfig:
             return ProductionConfig(
                 process_manager=str(data.get("process_manager", "none")),
                 nginx=data.get("nginx", False),
+                use_companion_manager=data.get("use_companion_manager", False),
             )
         # Legacy format: enabled + lightweight → derive process_manager
         if data.get("enabled", False):
             pm = "systemd" if data.get("lightweight", False) else "supervisor"
         else:
             pm = "none"
-        return ProductionConfig(process_manager=pm, nginx=data.get("nginx", False))
+        return ProductionConfig(
+            process_manager=pm,
+            nginx=data.get("nginx", False),
+            use_companion_manager=data.get("use_companion_manager", False),
+        )
 
     @staticmethod
     def _parse_nginx(data: dict) -> NginxConfig:
@@ -139,6 +145,15 @@ class BenchConfig:
             config_dir=Path(config_dir),
             worker_processes=str(data.get("worker_processes", "auto")),
             client_max_body_size=data.get("client_max_body_size", "50m"),
+        )
+
+    @staticmethod
+    def _parse_gunicorn(data: dict, http_port: int = 8000) -> GunicornConfig:
+        return GunicornConfig(
+            workers=data.get("workers", 4),
+            threads=data.get("threads", 4),
+            timeout=data.get("timeout", 120),
+            worker_class=data.get("worker_class", "sync"),
         )
 
     @staticmethod
@@ -199,6 +214,7 @@ class BenchConfig:
         self._validate_worker_counts()
         self._validate_letsencrypt_email()
         self._validate_nginx_ports_distinct()
+        self._validate_gunicorn()
         self._validate_mariadb_version()
         self._validate_redis_version()
         if self.volume.enabled:
@@ -254,17 +270,16 @@ class BenchConfig:
             raise ConfigError(f"redis.cache_port and redis.queue_port must be distinct, but both are set to {self.redis.cache_port}.")
 
     def _validate_worker_counts(self) -> None:
-        counts = {
-            "workers.default_count": self.workers.default_count,
-            "workers.short_count": self.workers.short_count,
-            "workers.long_count": self.workers.long_count,
-        }
-        for name, count in counts.items():
-            if not isinstance(count, int) or count < 1:
-                raise ConfigError(f"{name} must be a positive integer, got '{count}'.")
-        for entry in self.workers.custom:
-            if not isinstance(entry.count, int) or entry.count < 1:
-                raise ConfigError(f"workers.custom '{entry.queue}' count must be a positive integer, got '{entry.count}'.")
+        if not self.workers.groups:
+            raise ConfigError("workers.groups must contain at least one worker group.")
+        for i, group in enumerate(self.workers.groups):
+            prefix = f"workers[{i}]"
+            if not isinstance(group.queues, list) or not group.queues:
+                raise ConfigError(f"{prefix}.queues must be a non-empty list.")
+            if not all(isinstance(q, str) and q for q in group.queues):
+                raise ConfigError(f"{prefix}.queues must contain non-empty strings.")
+            if not isinstance(group.count, int) or group.count < 1:
+                raise ConfigError(f"{prefix}.count must be a positive integer, got '{group.count}'.")
 
     def _validate_letsencrypt_email(self) -> None:
         if self.letsencrypt.email and not _EMAIL_PATTERN.match(self.letsencrypt.email):
@@ -273,6 +288,16 @@ class BenchConfig:
     def _validate_nginx_ports_distinct(self) -> None:
         if self.nginx.http_port == self.nginx.https_port:
             raise ConfigError(f"nginx.http_port and nginx.https_port must be distinct, but both are set to {self.nginx.http_port}.")
+
+    def _validate_gunicorn(self) -> None:
+        if not isinstance(self.gunicorn.workers, int) or self.gunicorn.workers < 1:
+            raise ConfigError(f"gunicorn.workers must be a positive integer, got '{self.gunicorn.workers}'.")
+        if not isinstance(self.gunicorn.threads, int) or self.gunicorn.threads < 1:
+            raise ConfigError(f"gunicorn.threads must be a positive integer, got '{self.gunicorn.threads}'.")
+        if not isinstance(self.gunicorn.timeout, int) or self.gunicorn.timeout < 1:
+            raise ConfigError(f"gunicorn.timeout must be a positive integer, got '{self.gunicorn.timeout}'.")
+        if not self.gunicorn.worker_class:
+            raise ConfigError("gunicorn.worker_class must not be empty.")
 
     def _validate_mariadb_version(self) -> None:
         if self.mariadb.version and not _VERSION_PATTERN.match(self.mariadb.version):

@@ -33,6 +33,7 @@ class SupervisorProcessManager(ProcessManager):
 
     def generate_config(self) -> None:
         AdminEnvManager(_cli_root()).ensure()
+        self._ensure_gunicorn_config()
         self.supervisor_dir.mkdir(parents=True, exist_ok=True)
         self.supervisor_conf_path.write_text(self._render_supervisord_conf())
 
@@ -158,4 +159,6 @@ class SupervisorProcessManager(ProcessManager):
             lines.insert(2, f"directory={directory}")
         if env_vars:
             lines.insert(2, f"environment={','.join(env_vars)}")
+        if pd.name == "web" and self.bench.config.production.use_companion_manager:
+            lines.append("stopwaitsecs=1600")
         return "\n".join(lines) + "\n"

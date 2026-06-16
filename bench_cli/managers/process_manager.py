@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, List
 
 from bench_cli.exceptions import BenchError
 from bench_cli.managers.admin_env_manager import AdminEnvManager
+from bench_cli.managers.gunicorn_manager import GunicornManager
 
 if TYPE_CHECKING:
     from bench_cli.core.bench import Bench
@@ -52,8 +53,12 @@ class ProcessManager:
 
     def generate_config(self) -> None:
         AdminEnvManager(_cli_root()).ensure()
+        self._ensure_gunicorn_config()
         lines = [f"{pd.name}: {pd.command}\n" for pd in self._process_definitions()]
         self.procfile_path.write_text("".join(lines))
+
+    def _ensure_gunicorn_config(self) -> None:
+        GunicornManager(self.bench).generate_config()
 
     # ── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -158,22 +163,30 @@ class ProcessManager:
     # ── Process definitions ─────────────────────────────────────────────────
 
     def _prod_process_definitions(self) -> List[ProcessDefinition]:
-        if self.bench.config.production.process_manager == "systemd":
-            num_workers = self.bench.config.workers.default_count + self.bench.config.workers.short_count + self.bench.config.workers.long_count
-            worker_defs: List[ProcessDefinition] = [self._worker_pool_definition("long,default,short", num_workers)]
+        if self.bench.config.production.use_companion_manager:
+            defs = [self._web_definition(), self._admin_definition()]
+        elif self.bench.config.production.process_manager == "systemd":
+            all_queues = ",".join(q for group in self.bench.config.workers.groups for q in group.queues)
+            num_workers = sum(group.count for group in self.bench.config.workers.groups)
+            worker_defs: List[ProcessDefinition] = [self._worker_pool_definition(all_queues, num_workers)]
+            defs = [
+                self._web_definition(),
+                self._socketio_definition(),
+                self._admin_definition(),
+                *worker_defs,
+            ]
         else:
             worker_defs = [
-                *self._worker_definitions("default", self.bench.config.workers.default_count),
-                *self._worker_definitions("short", self.bench.config.workers.short_count),
-                *self._worker_definitions("long", self.bench.config.workers.long_count),
+                pd
+                for group in self.bench.config.workers.groups
+                for pd in self._worker_definitions(",".join(group.queues), group.count)
             ]
-        defs = [
-            self._web_definition(),
-            self._socketio_definition(),
-            self._admin_definition(),
-            *worker_defs,
-            *[pd for entry in self.bench.config.workers.custom for pd in self._worker_definitions(entry.queue, entry.count)],
-        ]
+            defs = [
+                self._web_definition(),
+                self._socketio_definition(),
+                self._admin_definition(),
+                *worker_defs,
+            ]
         defs.append(self._redis_definition("redis_cache", "redis_cache.conf"))
         defs.append(self._redis_definition("redis_queue", "redis_queue.conf"))
         return defs
@@ -192,13 +205,19 @@ class ProcessManager:
         return pd
 
     def _web_definition(self, dev: bool = False) -> ProcessDefinition:
-        port = self.bench.config.http_port
         sites = self.bench.sites_path
         python = self.bench.env_path / "bin" / "python"
-        env_prefix = "DEV_SERVER=1 " if dev else ""
+        if dev:
+            port = self.bench.config.http_port
+            return ProcessDefinition(
+                name="web",
+                command=f"cd {sites} && DEV_SERVER=1 {python} -m frappe.utils.bench_helper frappe serve --port {port} --noreload",
+                log_file=self.bench.logs_path / "web.log",
+            )
+        gunicorn = self.bench.env_path / "bin" / "gunicorn"
         return ProcessDefinition(
             name="web",
-            command=f"cd {sites} && {env_prefix}{python} -m frappe.utils.bench_helper frappe serve --port {port} --noreload",
+            command=f"cd {sites} && {gunicorn} -c ../config/gunicorn.conf.py frappe.app:application",
             log_file=self.bench.logs_path / "web.log",
         )
 
