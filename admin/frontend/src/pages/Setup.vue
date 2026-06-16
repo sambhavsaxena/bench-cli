@@ -69,13 +69,34 @@ const rootfsFreeBytes = ref(0)
 const freeGiB = computed(() => Math.floor(rootfsFreeBytes.value / GIB))
 const imageSizeMaxGiB = computed(() => Math.max(5, freeGiB.value || 100))
 const imageSizeMinGiB = computed(() => Math.min(5, imageSizeMaxGiB.value))
+// Raw text input value — typed freely, clamped only on blur
+const imageSizeInputValue = ref(String(parseInt(form.value.volume_image_size) || 60))
+
+// Keep text input in sync when the form changes from outside (config load, slider drag)
+watch(
+  () => form.value.volume_image_size,
+  (size) => {
+    const n = parseInt(size)
+    if (!isNaN(n)) imageSizeInputValue.value = String(n)
+  }
+)
+
+function onImageSizeBlur() {
+  const n = parseInt(imageSizeInputValue.value)
+  const clamped = Math.min(
+    imageSizeMaxGiB.value,
+    Math.max(imageSizeMinGiB.value, isNaN(n) ? imageSizeMinGiB.value : n),
+  )
+  form.value.volume_image_size = `${clamped}G`
+}
+
 const imageSliderModel = computed({
   get() {
     const n = parseInt(form.value.volume_image_size) || imageSizeMinGiB.value
     return [Math.min(imageSizeMaxGiB.value, Math.max(imageSizeMinGiB.value, n))]
   },
-  set(arr) {
-    form.value.volume_image_size = `${arr[0]}G`
+  set([n]) {
+    form.value.volume_image_size = `${n}G`
   },
 })
 
@@ -431,9 +452,19 @@ function backToConfig() {
             placeholder="/dev/sdb"
           />
           <div v-else-if="form.volume_backing === 'image'" class="space-y-1.5">
-            <div class="flex items-baseline justify-between">
+            <div class="flex items-center justify-between gap-2">
               <FormLabel label="Image size" />
-              <span class="text-xs text-ink-gray-5">{{ imageSliderModel[0] }} GB of {{ freeGiB }} GB free</span>
+              <div class="flex items-center gap-1.5">
+                <TextInput
+                  type="number"
+                  class="w-20"
+                  :min="imageSizeMinGiB"
+                  :max="imageSizeMaxGiB"
+                  v-model="imageSizeInputValue"
+                  @blur="onImageSizeBlur"
+                />
+                <span class="text-xs text-ink-gray-5">GB of {{ freeGiB }} GB free</span>
+              </div>
             </div>
             <Slider v-model="imageSliderModel" :min="imageSizeMinGiB" :max="imageSizeMaxGiB" :step="1" />
           </div>
