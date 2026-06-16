@@ -22,6 +22,7 @@ FLAT_KEYS = {
     "workers_default": "workers.default_count",
     "workers_short": "workers.short_count",
     "workers_long": "workers.long_count",
+    "volume_enabled": "volume.enabled",
     "volume_pool": "volume.pool",
     "volume_backing": "volume.backing",
     "volume_device": "volume.device",
