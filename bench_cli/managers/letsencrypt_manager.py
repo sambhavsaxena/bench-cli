@@ -25,7 +25,7 @@ def needs_letsencrypt(bench: "Bench") -> bool:
     domain. Requires letsencrypt.email to be configured."""
     if not bench.config.letsencrypt.email:
         return False
-    if any(site.config.ssl for site in bench.sites()):
+    if any(site.config.ssl and _is_public_domain(site.config.name) for site in bench.sites()):
         return True
     return _is_public_domain(bench.config.admin.domain)
 
@@ -74,7 +74,7 @@ class LetsEncryptManager:
 
     def obtain_all(self) -> None:
         for site in self.bench.sites():
-            if site.config.ssl:
+            if site.config.ssl and _is_public_domain(site.config.name):
                 self.obtain(site.config)
         if _is_public_domain(self.bench.config.admin.domain):
             self.obtain_admin()
