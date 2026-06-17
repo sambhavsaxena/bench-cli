@@ -66,6 +66,6 @@ class RunCommand(Command):
     def _admin_port(self) -> int:
         try:
             with open(self.bench.path / "bench.toml", "rb") as f:
-                return tomllib.load(f).get("admin", {}).get("port", 8002)
+                return tomllib.load(f).get("admin", {}).get("port", 7000)
         except Exception:
-            return 8002
+            return 7000

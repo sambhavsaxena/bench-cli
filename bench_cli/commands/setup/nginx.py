@@ -51,3 +51,7 @@ class SetupNginxCommand(Command):
                 http_port = self.bench.config.nginx.http_port
                 port_suffix = "" if http_port == 80 else f":{http_port}"
                 print(f"  http://{site.config.name}{port_suffix}")
+        domain = self.bench.config.admin.domain
+        if domain:
+            scheme = "https" if self.nginx_manager.admin_cert_exists() else "http"
+            print(f"  {scheme}://{domain} (admin)")

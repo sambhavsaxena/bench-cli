@@ -65,7 +65,11 @@ class StatusCommand(Command):
 
         if cfg.admin.enabled:
             self._section("Admin")
-            self._row("URL", f"http://localhost:{cfg.admin.port}")
+            if prod.enabled and cfg.admin.domain:
+                scheme = "https" if cfg.admin.domain and not cfg.admin.domain.endswith(".localhost") else "http"
+                self._row("URL", f"{scheme}://{cfg.admin.domain}")
+            else:
+                self._row("URL", f"http://localhost:{cfg.admin.port}")
             self._row("Auth", "enabled" if cfg.admin.password else "no password set")
 
         from bench_cli.platform import is_linux
