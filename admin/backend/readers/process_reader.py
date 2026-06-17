@@ -20,25 +20,113 @@ class ProcessInfo:
     uptime: str | None
     log_file: Path
     cpu_percent: float | None = None
-    memory_mb: float | None = None
+    rss_mb: float | None = None
+    pss_mb: float | None = None
 
 
-def _get_process_stats(pid: int) -> tuple[float | None, float | None]:
+def _format_duration(seconds: float) -> str:
+    s = int(seconds)
+    d, s = divmod(s, 86400)
+    h, s = divmod(s, 3600)
+    m, s = divmod(s, 60)
+    if d:
+        return f"{d}d {h}h"
+    if h:
+        return f"{h}h {m}m"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+def _proc_uptime(pid: int) -> str | None:
+    """Wall-clock uptime of a process from its /proc start time.
+
+    Works for any manager (systemd/supervisor/dev) since it only needs the
+    PID; returns None if the process is gone or /proc is unreadable.
+    """
+    try:
+        with open("/proc/uptime") as f:
+            system_uptime = float(f.read().split()[0])
+        with open(f"/proc/{pid}/stat") as f:
+            data = f.read()
+        # starttime is field 22 (clock ticks since boot); fields after comm ')'
+        # start at field 3, so field 22 is index 19 here.
+        starttime_ticks = int(data[data.rindex(")") + 2:].split()[19])
+        elapsed = system_uptime - starttime_ticks / os.sysconf("SC_CLK_TCK")
+        return _format_duration(elapsed) if elapsed >= 0 else None
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _read_pss_kb(pid: int) -> int | None:
+    """Proportional Set Size in KB from /proc/<pid>/smaps_rollup (Linux 4.14+).
+
+    Returns None if the kernel lacks smaps_rollup or we can't read it (e.g.
+    the process belongs to another user).
+    """
+    try:
+        with open(f"/proc/{pid}/smaps_rollup") as f:
+            for line in f:
+                if line.startswith("Pss:"):
+                    return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _subtree_pids(pid: int) -> list[int]:
+    """The pid plus all of its descendant pids.
+
+    gunicorn/supervisord run their workers as children of the main PID, so a
+    service's real footprint is the whole subtree — not just MainPID, which is
+    all systemd/supervisor hand us.
+    """
+    children: dict[int, list[int]] = {}
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat") as f:
+                data = f.read()
+            # comm (2nd field) may contain spaces/parens; ppid is the 2nd field after ')'
+            ppid = int(data[data.rindex(")") + 2:].split()[1])
+        except (OSError, ValueError, IndexError):
+            continue
+        children.setdefault(ppid, []).append(int(entry))
+
+    tree, stack = [], [pid]
+    while stack:
+        cur = stack.pop()
+        tree.append(cur)
+        stack.extend(children.get(cur, []))
+    return tree
+
+
+def _get_process_stats(pid: int) -> tuple[float | None, float | None, float | None]:
+    """Aggregate CPU%, RSS (MB) and PSS (MB) across the whole process subtree."""
+    pids = _subtree_pids(pid)
     try:
         result = subprocess.run(
-            ["ps", "-p", str(pid), "-o", "%cpu=,rss="],
+            ["ps", "-o", "%cpu=,rss=", "-p", ",".join(map(str, pids))],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        if result.returncode != 0:
-            return None, None
-        parts = result.stdout.strip().split()
-        if len(parts) >= 2:
-            return float(parts[0]), round(int(parts[1]) / 1024.0, 1)
     except Exception:
-        pass
-    return None, None
+        return None, None, None
+    if result.returncode != 0:
+        return None, None, None
+
+    cpu_total, rss_kb = 0.0, 0
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2:
+            cpu_total += float(parts[0])
+            rss_kb += int(parts[1])
+
+    pss_vals = [v for p in pids if (v := _read_pss_kb(p)) is not None]
+    pss_mb = round(sum(pss_vals) / 1024.0, 1) if pss_vals else None
+    return round(cpu_total, 1), round(rss_kb / 1024.0, 1), pss_mb
 
 
 class ProcessReader:
@@ -90,8 +178,10 @@ class ProcessReader:
         pid_str = props.get("MainPID", "0")
         pid = int(pid_str) if pid_str.isdigit() and pid_str != "0" else None
         log_file = self._bench_root / "logs" / f"{name}.log"
-        cpu, mem = _get_process_stats(pid) if pid and status == "running" else (None, None)
-        return ProcessInfo(name=name, status=status, pid=pid, uptime=None, log_file=log_file, cpu_percent=cpu, memory_mb=mem)
+        running = bool(pid and status == "running")
+        cpu, rss, pss = _get_process_stats(pid) if running else (None, None, None)
+        uptime = _proc_uptime(pid) if running else None
+        return ProcessInfo(name=name, status=status, pid=pid, uptime=uptime, log_file=log_file, cpu_percent=cpu, rss_mb=rss, pss_mb=pss)
 
     # ── Supervisor ───────────────────────────────────────────────────────────
 
@@ -123,16 +213,15 @@ class ProcessReader:
         status = "running" if state == "running" else ("stopped" if state in ("stopped", "exited", "fatal", "backoff") else "unknown")
 
         pid: int | None = None
-        uptime: str | None = None
         if pid_m := re.search(r"pid (\d+)", rest):
             pid = int(pid_m.group(1))
-        if uptime_m := re.search(r"uptime (\S+)", rest):
-            uptime = uptime_m.group(1)
 
         program = full_name.split(":", 1)[-1].removeprefix(f"{bench_name}-")
         log_file = self._bench_root / "logs" / f"{program.replace('-', '_')}.log"
-        cpu, mem = _get_process_stats(pid) if pid and status == "running" else (None, None)
-        return ProcessInfo(name=program, status=status, pid=pid, uptime=uptime, log_file=log_file, cpu_percent=cpu, memory_mb=mem)
+        running = bool(pid and status == "running")
+        cpu, rss, pss = _get_process_stats(pid) if running else (None, None, None)
+        uptime = _proc_uptime(pid) if running else None
+        return ProcessInfo(name=program, status=status, pid=pid, uptime=uptime, log_file=log_file, cpu_percent=cpu, rss_mb=rss, pss_mb=pss)
 
     # ── Procfile (dev) ───────────────────────────────────────────────────────
 
@@ -155,5 +244,6 @@ class ProcessReader:
         except OSError:
             status = "stopped"
 
-        cpu, mem = _get_process_stats(pid) if status == "running" else (None, None)
-        return ProcessInfo(name=name, status=status, pid=pid, uptime=None, log_file=log_file, cpu_percent=cpu, memory_mb=mem)
+        cpu, rss, pss = _get_process_stats(pid) if status == "running" else (None, None, None)
+        uptime = _proc_uptime(pid) if status == "running" else None
+        return ProcessInfo(name=name, status=status, pid=pid, uptime=uptime, log_file=log_file, cpu_percent=cpu, rss_mb=rss, pss_mb=pss)

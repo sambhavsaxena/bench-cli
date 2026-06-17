@@ -20,9 +20,8 @@ const form = ref({
   admin_password: '',
   app_repo: 'https://github.com/frappe/frappe',
   app_branch: 'develop',
-  workers_default: 2,
-  workers_short: 1,
-  workers_long: 1,
+  volume_enabled: false,
+  workers: [{ queues: 'default, short, long', count: 1 }],
   volume_pool: 'bench-pool',
   volume_backing: 'device',
   volume_device: '',
@@ -33,6 +32,14 @@ const form = ref({
   volume_mariadb_quota: '20G',
   production_process_manager: 'none',
 })
+
+function addWorkerGroup() {
+  form.value.workers.push({ queues: '', count: 1 })
+}
+
+function removeWorkerGroup(i) {
+  form.value.workers.splice(i, 1)
+}
 
 // ── framework branch dropdown (fetched from the admin backend) ────────────
 const branchOptions = ref([])
@@ -69,13 +76,34 @@ const rootfsFreeBytes = ref(0)
 const freeGiB = computed(() => Math.floor(rootfsFreeBytes.value / GIB))
 const imageSizeMaxGiB = computed(() => Math.max(5, freeGiB.value || 100))
 const imageSizeMinGiB = computed(() => Math.min(5, imageSizeMaxGiB.value))
+// Raw text input value — typed freely, clamped only on blur
+const imageSizeInputValue = ref(String(parseInt(form.value.volume_image_size) || 60))
+
+// Keep text input in sync when the form changes from outside (config load, slider drag)
+watch(
+  () => form.value.volume_image_size,
+  (size) => {
+    const n = parseInt(size)
+    if (!isNaN(n)) imageSizeInputValue.value = String(n)
+  }
+)
+
+function onImageSizeBlur() {
+  const n = parseInt(imageSizeInputValue.value)
+  const clamped = Math.min(
+    imageSizeMaxGiB.value,
+    Math.max(imageSizeMinGiB.value, isNaN(n) ? imageSizeMinGiB.value : n),
+  )
+  form.value.volume_image_size = `${clamped}G`
+}
+
 const imageSliderModel = computed({
   get() {
     const n = parseInt(form.value.volume_image_size) || imageSizeMinGiB.value
     return [Math.min(imageSizeMaxGiB.value, Math.max(imageSizeMinGiB.value, n))]
   },
-  set(arr) {
-    form.value.volume_image_size = `${arr[0]}G`
+  set([n]) {
+    form.value.volume_image_size = `${n}G`
   },
 })
 
@@ -126,7 +154,9 @@ watch(
 )
 
 const configSteps = computed(() =>
-  isLinux.value ? ['passwords', 'customize', 'volume'] : ['passwords', 'customize']
+  isLinux.value && form.value.volume_enabled
+    ? ['passwords', 'customize', 'volume']
+    : ['passwords', 'customize']
 )
 const stepNumber = computed(() => configSteps.value.indexOf(step.value) + 1)
 const isConfiguring = computed(() => stepNumber.value > 0)
@@ -162,6 +192,8 @@ async function loadConfig() {
     for (const key of Object.keys(form.value)) {
       if (data[key] !== undefined) form.value[key] = data[key]
     }
+    if (Array.isArray(data.workers) && data.workers.length)
+      form.value.workers = data.workers.map(g => ({ queues: (g.queues || []).join(', '), count: g.count }))
     if (data.running_init_task_id) {
       step.value = 'running'
       streamTask(`/api/setup/stream/${data.running_init_task_id}`, onInitDone)
@@ -250,7 +282,7 @@ function parseSize(value) {
 }
 
 function validateVolume() {
-  if (!isLinux.value) return null
+  if (!isLinux.value || !form.value.volume_enabled) return null
   if (!form.value.volume_pool) return 'Pool name is required.'
   const sizeHint = 'must be a positive integer with a K/M/G/T suffix (e.g. 10G)'
   let imageSize = null
@@ -378,20 +410,24 @@ function backToConfig() {
           <FormControl label="Frappe repository" v-model="form.app_repo" />
           <div class="space-y-1.5">
             <FormLabel label="Workers" />
-            <div class="grid grid-cols-3 gap-2">
-              <div class="space-y-1">
-                <FormLabel label="Default" />
-                <TextInput v-model="form.workers_default" type="number" />
-              </div>
-              <div class="space-y-1">
-                <FormLabel label="Short" />
-                <TextInput v-model="form.workers_short" type="number" />
-              </div>
-              <div class="space-y-1">
-                <FormLabel label="Long" />
-                <TextInput v-model="form.workers_long" type="number" />
-              </div>
+            <p class="text-xs text-ink-gray-5">
+              Each group spawns <span class="font-medium">count</span> workers for the listed queues.
+            </p>
+            <div
+              v-for="(group, i) in form.workers"
+              :key="i"
+              class="grid grid-cols-[1fr_5rem_auto] items-center gap-2"
+            >
+              <TextInput v-model="group.queues" placeholder="default, short, long" />
+              <TextInput v-model.number="group.count" type="number" :min="1" />
+              <Button
+                variant="ghost"
+                icon="trash-2"
+                :disabled="form.workers.length === 1"
+                @click="removeWorkerGroup(i)"
+              />
             </div>
+            <Button variant="subtle" icon-left="plus" label="Add group" @click="addWorkerGroup" />
           </div>
           <FormControl
             type="select"
@@ -402,6 +438,12 @@ function backToConfig() {
               { label: 'Supervisor — bench-owned supervisord, no root needed', value: 'supervisor' },
               { label: 'Systemd — systemctl --user units', value: 'systemd' },
             ]"
+          />
+          <FormControl
+            v-if="isLinux"
+            type="checkbox"
+            label="Enable ZFS volume management"
+            v-model="form.volume_enabled"
           />
           <ErrorMessage v-if="error" :message="error" />
         </div>
@@ -431,9 +473,19 @@ function backToConfig() {
             placeholder="/dev/sdb"
           />
           <div v-else-if="form.volume_backing === 'image'" class="space-y-1.5">
-            <div class="flex items-baseline justify-between">
+            <div class="flex items-center justify-between gap-2">
               <FormLabel label="Image size" />
-              <span class="text-xs text-ink-gray-5">{{ imageSliderModel[0] }} GB of {{ freeGiB }} GB free</span>
+              <div class="flex items-center gap-1.5">
+                <TextInput
+                  type="number"
+                  class="w-20"
+                  :min="imageSizeMinGiB"
+                  :max="imageSizeMaxGiB"
+                  v-model="imageSizeInputValue"
+                  @blur="onImageSizeBlur"
+                />
+                <span class="text-xs text-ink-gray-5">GB of {{ freeGiB }} GB free</span>
+              </div>
             </div>
             <Slider v-model="imageSliderModel" :min="imageSizeMinGiB" :max="imageSizeMaxGiB" :step="1" />
           </div>

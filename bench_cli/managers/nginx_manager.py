@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from bench_cli.managers.gunicorn_manager import GunicornManager
 from bench_cli.platform import get_package_manager, is_linux
 from bench_cli.utils import run_command
 
@@ -65,10 +66,10 @@ class NginxManager:
         )
 
     def _render_upstream_block(self, bench_name: str) -> str:
-        http_port = self.bench.config.http_port
+        upstream_server = GunicornManager(self.bench).upstream_server()
         return (
             f"upstream bench-{bench_name} {{\n"
-            f"    server 127.0.0.1:{http_port};\n"
+            f"    server {upstream_server};\n"
             f"    keepalive 32;\n"
             f"}}\n\n"
         )

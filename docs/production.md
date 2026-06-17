@@ -11,7 +11,7 @@ Covers DNS-based multitenancy, Nginx reverse-proxy configuration, and Let's Encr
 A production bench differs from a development bench in three ways:
 
 1. **Process manager** — processes run as a background daemon managed by supervisor (default) or systemd.
-2. **Nginx sits in front of Gunicorn** — terminates SSL, serves static assets directly, and passes the `Host` header to Frappe to identify the requested site.
+2. **Nginx sits in front of Gunicorn** — terminates SSL, serves static assets directly, and proxies dynamic requests to a pool of Gunicorn workers. Gunicorn runs the Frappe WSGI application with multiple workers.
 3. **Each site has a real domain** — Frappe uses the `Host` header to route requests to the correct site database and files. This is called DNS multitenancy.
 
 The `bench setup` sub-commands orchestrate these concerns:
@@ -57,24 +57,32 @@ Adding a `[production]` section to `bench.toml` enables production mode. The sec
 
 ```toml
 [production]
-lightweight = false   # false = supervisor (default), true = systemd --user
-nginx = true          # include nginx setup in bench setup production
+process_manager = "supervisor"   # none | supervisor | systemd
+nginx = true                     # include nginx setup in bench setup production
+use_companion_manager = false    # run scheduler/workers/socketio inside gunicorn
 ```
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `lightweight` | bool | no | `false` | When `false` (default), uses a bench-owned `supervisord` instance. When `true`, uses `systemctl --user` units (requires `loginctl enable-linger` once as root). |
+| `process_manager` | string | no | `none` | Production process manager: `none`, `supervisor`, or `systemd`. |
 | `nginx` | bool | no | `false` | When `true`, `bench setup production` also runs nginx setup and (if any site has `ssl: true`) Let's Encrypt certificate issuance. |
+| `use_companion_manager` | bool | no | `false` | Run scheduler, RQ workers, and socket.io as Gunicorn companion processes under a single preloaded master. Requires the Frappe Gunicorn fork with companion support. |
 
-**Supervisor** (default, `lightweight = false`):
+**Supervisor** (`process_manager = "supervisor"`, default):
 - Installs `supervisor` package if not present and disables the system-wide service.
 - Writes `config/supervisor/supervisord.conf` and starts a bench-owned supervisord.
 - No `sudo` needed for day-to-day process management.
 
-**Systemd** (`lightweight = true`):
+**Systemd** (`process_manager = "systemd"`):
 - Writes `.service` files to `~/.config/systemd/user/` and a `.target` that groups them.
 - Requires `sudo loginctl enable-linger <user>` once so the user session persists after logout.
 - No `sudo` needed after that — `systemctl --user` manages everything.
+
+### Companion manager
+
+When `use_companion_manager = true`, the generated `config/gunicorn.conf.py` includes `companion_workers` for the scheduler, each RQ worker, and socket.io. Gunicorn forks a companion manager that supervises these processes, so they share the preloaded application memory copy-on-write.
+
+In this mode the supervisor/systemd configs only manage the Gunicorn web process (plus admin and Redis). The web service gets an extended stop timeout (1600s) so Gunicorn has time to drain all companions before SIGKILL.
 
 ### `sites[]` — new optional fields
 
@@ -113,6 +121,27 @@ client_max_body_size = "50m"       # for file uploads
 | `config_dir` | string | no | `/etc/nginx/conf.d` | System directory where the bench include-pointer file is written. |
 | `worker_processes` | string\|int | no | `auto` | Passed directly to the Nginx `worker_processes` directive. |
 | `client_max_body_size` | string | no | `50m` | Maximum request body size; increase for large file uploads. |
+
+### `gunicorn` section (new)
+
+```toml
+[gunicorn]
+workers = 4                          # number of Gunicorn worker processes
+threads = 4                          # threads per worker (used by gthread)
+timeout = 120
+worker_class = "sync"
+malloc_arena_max = 2                 # cap glibc malloc arenas; 0 = unset
+```
+
+Gunicorn binds automatically to `127.0.0.1:<bench.http_port>` and `preload_app` is always enabled.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `workers` | int | no | `4` | Number of Gunicorn worker processes. |
+| `threads` | int | no | `4` | Threads per worker. Used by the `gthread` worker class. |
+| `timeout` | int | no | `120` | Request timeout in seconds. |
+| `worker_class` | string | no | `sync` | Gunicorn worker class. |
+| `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to reduce RSS. `0` leaves the system default unset. |
 
 ### `letsencrypt` section (new)
 
@@ -160,6 +189,7 @@ When `admin.domain` is set and `nginx.enabled = true`:
 ```
 <bench-root>/
 └── config/
+    ├── gunicorn.conf.py               # Gunicorn worker/bind configuration
     └── nginx/
         ├── site1.example.com.conf     # per-site server blocks
         ├── site2.example.com.conf
@@ -195,7 +225,7 @@ This means:
 # bench — site1.example.com
 
 upstream bench-<bench-name> {
-    server 127.0.0.1:8000;
+    server unix:<bench-root>/config/gunicorn.sock;
     keepalive 32;
 }
 
@@ -319,6 +349,18 @@ class NginxConfig:
     client_max_body_size: str = '50m'
 ```
 
+#### `GunicornConfig`
+
+```python
+@dataclass
+class GunicornConfig:
+    workers: int = 4
+    threads: int = 4
+    timeout: int = 120
+    worker_class: str = 'sync'
+    malloc_arena_max: int = 2
+```
+
 #### `LetsEncryptConfig`
 
 ```python
@@ -352,7 +394,9 @@ class SiteConfig:
 @dataclass
 class BenchConfig:
     ...
+    production: ProductionConfig = field(default_factory=ProductionConfig)
     nginx: NginxConfig = field(default_factory=NginxConfig)
+    gunicorn: GunicornConfig = field(default_factory=GunicornConfig)
     letsencrypt: LetsEncryptConfig = field(default_factory=LetsEncryptConfig)
 ```
 
@@ -362,10 +406,28 @@ class BenchConfig:
 bench_cli/config/
 ├── ...
 ├── nginx_config.py          # NginxConfig
+├── gunicorn_config.py       # GunicornConfig
 └── letsencrypt_config.py    # LetsEncryptConfig
 ```
 
 ### New managers
+
+#### `GunicornManager`
+
+```python
+class GunicornManager:
+    def __init__(self, bench: Bench): ...
+
+    def generate_config(self) -> None:
+        """Write config/gunicorn.conf.py from bench.toml [gunicorn] settings.
+
+        When production.use_companion_manager is true, the config also
+        includes companion_workers for scheduler, RQ workers, and socket.io.
+        """
+
+    def upstream_server(self) -> str:
+        """Return the nginx upstream server value for the configured bind."""
+```
 
 #### `NginxManager`
 
@@ -476,11 +538,13 @@ bench_cli/
     ├── config/
     │   ├── ...
     │   ├── nginx_config.py
+    │   ├── gunicorn_config.py
     │   └── letsencrypt_config.py
     │
     ├── managers/
     │   ├── ...
     │   ├── nginx_manager.py
+    │   ├── gunicorn_manager.py
     │   └── letsencrypt_manager.py
     │
     └── commands/
@@ -649,10 +713,17 @@ cache_port = 13000
 queue_port = 11000
 socketio_port = 12000
 
-[workers]
-default = 4
-short = 2
-long = 1
+[[workers]]
+queues = ["default"]
+count = 4
+
+[[workers]]
+queues = ["short"]
+count = 2
+
+[[workers]]
+queues = ["long"]
+count = 1
 
 [admin]
 port = 8002
@@ -661,11 +732,17 @@ domain = "admin.example.com"    # optional — serve admin UI over HTTPS via ngi
 
 [production]
 nginx = true          # run nginx + letsencrypt as part of bench setup production
-# lightweight = true  # uncomment to use systemd --user instead of supervisor
+# process_manager = "systemd"  # uncomment to use systemd --user instead of supervisor
+# use_companion_manager = true  # run scheduler/workers/socketio inside gunicorn
 
 [nginx]
 enabled = true
 client_max_body_size = "100m"
+
+[gunicorn]
+workers = 4
+threads = 4
+timeout = 120
 
 [letsencrypt]
 email = "ops@example.com"

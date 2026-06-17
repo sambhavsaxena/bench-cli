@@ -7,6 +7,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from bench_cli.config.bench_config import BenchConfig
 from bench_cli.config.toml_writer import bench_config_to_toml
+from bench_cli.config.worker_config import WorkerGroup
 from bench_cli.managers.redis_manager import RedisManager
 from bench_cli.managers.volume_manager import VolumeManager
 from bench_cli.platform import is_linux
@@ -23,9 +24,7 @@ _RESTART_KEYS = {
     ("mariadb", "socket_path"),
     ("redis", "cache_port"),
     ("redis", "queue_port"),
-    ("workers", "default"),
-    ("workers", "short"),
-    ("workers", "long"),
+    ("workers", "groups"),
     ("production", "process_manager"),
 }
 
@@ -34,12 +33,16 @@ def _needs_restart(old: dict, new: dict) -> bool:
     return any(old.get(section, {}).get(key) != new.get(section, {}).get(key) for section, key in _RESTART_KEYS)
 
 
+def _worker_groups_payload(config: BenchConfig) -> list[dict]:
+    return [{"queues": list(g.queues), "count": g.count} for g in config.workers.groups]
+
+
 def _restart_trigger_values(config: BenchConfig) -> dict:
     return {
         "bench": {"python": config.python_version, "http_port": config.http_port, "socketio_port": config.socketio_port},
         "mariadb": {"host": config.mariadb.host, "port": config.mariadb.port, "admin_user": config.mariadb.admin_user, "socket_path": config.mariadb.socket_path},
         "redis": {"cache_port": config.redis.cache_port, "queue_port": config.redis.queue_port},
-        "workers": {"default": config.workers.default_count, "short": config.workers.short_count, "long": config.workers.long_count},
+        "workers": {"groups": _worker_groups_payload(config)},
         "production": {"process_manager": config.production.process_manager},
     }
 
@@ -96,13 +99,20 @@ class ConfigPatcher:
         redis_config.queue_port = int(redis.get("queue_port", redis_config.queue_port))
 
     def _apply_workers(self) -> None:
-        workers = self.data.get("workers") or {}
+        workers = self.data.get("workers")
         if not workers:
             return
-        workers_config = self.config.workers
-        workers_config.default_count = int(workers.get("default", workers_config.default_count))
-        workers_config.short_count = int(workers.get("short", workers_config.short_count))
-        workers_config.long_count = int(workers.get("long", workers_config.long_count))
+        groups = []
+        for entry in workers:
+            queues = entry.get("queues") or []
+            if isinstance(queues, str):
+                queues = [q.strip() for q in queues.split(",") if q.strip()]
+            queues = [str(q) for q in queues if str(q).strip()]
+            if not queues:
+                continue
+            groups.append(WorkerGroup(queues=queues, count=int(entry.get("count", 1))))
+        if groups:
+            self.config.workers.groups = groups
 
     def _apply_nginx(self) -> None:
         nginx = self.data.get("nginx") or {}
@@ -226,7 +236,7 @@ def _build_settings_response(config: BenchConfig) -> dict:
             "version": config.mariadb.version or "",
         },
         "redis": {"cache_port": config.redis.cache_port, "queue_port": config.redis.queue_port, "version": RedisManager.installed_version() or config.redis.version or ""},
-        "workers": {"default": config.workers.default_count, "short": config.workers.short_count, "long": config.workers.long_count},
+        "workers": _worker_groups_payload(config),
         "nginx": {
             "http_port": config.nginx.http_port,
             "https_port": config.nginx.https_port,
@@ -279,17 +289,18 @@ def update_settings():
     if error := ConfigPatcher(config, data).apply():
         return jsonify({"ok": False, "error": error}), 400
 
-    if error := volume_manager.validate_sizes_fit_backing():
-        return jsonify({"ok": False, "error": error}), 400
-    if error := volume_manager.validate_quotas_above_usage():
-        return jsonify({"ok": False, "error": error}), 400
+    if config.volume.enabled:
+        if error := volume_manager.validate_sizes_fit_backing():
+            return jsonify({"ok": False, "error": error}), 400
+        if error := volume_manager.validate_quotas_above_usage():
+            return jsonify({"ok": False, "error": error}), 400
 
     try:
         (bench_root / "bench.toml").write_text(bench_config_to_toml(config))
     except Exception as error:
         return jsonify({"ok": False, "error": f"Failed to write config: {error}"}), 500
 
-    zfs_error = volume_manager.apply_sizes()
+    zfs_error = volume_manager.apply_sizes() if config.volume.enabled else None
 
     restarted, restart_error = False, None
     if _needs_restart(old_restart, _restart_trigger_values(config)):

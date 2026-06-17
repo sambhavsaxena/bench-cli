@@ -125,10 +125,10 @@ def test_rule_8_redis_ports_must_be_distinct() -> None:
 
 def test_rule_9_worker_counts_must_be_positive() -> None:
     data = copy.deepcopy(MINIMAL_VALID_DATA)
-    data["workers"] = {"default": 0, "short": 1, "long": 1}
+    data["workers"] = [{"queues": ["default"], "count": 0}]
     with pytest.raises(ConfigError) as exc_info:
         load_from_dict(data)
-    assert "workers.default_count" in str(exc_info.value)
+    assert "workers[0].count" in str(exc_info.value)
 
 
 def test_rule_11_invalid_letsencrypt_email() -> None:
@@ -394,6 +394,20 @@ def test_volume_invalid_backing_rejected() -> None:
 def test_volume_reservation_cannot_exceed_quota() -> None:
     with pytest.raises(ConfigError, match="cannot exceed quota"):
         load_from_dict(_data_with_volume({"device": "/dev/sdb", "benches": {"reservation": "20G", "quota": "10G"}}))
+
+
+def test_volume_skipped_when_not_configured() -> None:
+    data = copy.deepcopy(MINIMAL_VALID_DATA)  # no [volume] section
+    config = BenchConfig._from_dict(data)
+    config.validate()  # must not raise — ZFS validation is skipped when volume not configured
+    assert not config.volume.enabled
+
+
+def test_toml_writer_omits_volume_when_not_configured() -> None:
+    data = copy.deepcopy(MINIMAL_VALID_DATA)
+    config = load_from_dict(data)
+    toml = bench_config_to_toml(config)
+    assert "[volume]" not in toml
 
 
 def test_toml_writer_volume_image_backing_round_trip() -> None:

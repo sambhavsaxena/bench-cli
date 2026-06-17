@@ -72,13 +72,14 @@ def _validate(data: dict) -> str | None:
     for field in ("mariadb_password", "admin_password"):
         if not data.get(field):
             return f"{field} is required"
-    if not data.get("volume_pool"):
-        return "volume_pool is required"
-    backing = data.get("volume_backing", "auto")
-    if backing == "device" and not data.get("volume_device"):
-        return "volume_device is required when volume backing is a block device"
-    if backing == "image" and not data.get("volume_image_size"):
-        return "volume_image_size is required when volume backing is a disk image"
+    if data.get("volume_enabled", True):
+        if not data.get("volume_pool"):
+            return "volume_pool is required"
+        backing = data.get("volume_backing", "auto")
+        if backing == "device" and not data.get("volume_device"):
+            return "volume_device is required when volume backing is a block device"
+        if backing == "image" and not data.get("volume_image_size"):
+            return "volume_image_size is required when volume backing is a disk image"
     return None
 
 
@@ -96,8 +97,9 @@ def start_init():
         config.validate()
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    if error := VolumeManager(config.volume).validate_sizes_fit_backing():
-        return jsonify({"ok": False, "error": error}), 400
+    if config.volume.enabled:
+        if error := VolumeManager(config.volume).validate_sizes_fit_backing():
+            return jsonify({"ok": False, "error": error}), 400
 
     try:
         task_id = TaskRunner(bench_root).run("bench-init", {})

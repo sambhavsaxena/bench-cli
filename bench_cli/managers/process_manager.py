@@ -6,12 +6,13 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
 from bench_cli.exceptions import BenchError
 from bench_cli.managers.admin_env_manager import AdminEnvManager
+from bench_cli.managers.gunicorn_manager import GunicornManager
 
 if TYPE_CHECKING:
     from bench_cli.core.bench import Bench
@@ -32,6 +33,8 @@ class ProcessDefinition:
     name: str
     command: str
     log_file: Path
+    # Extra environment variables for this process (and anything it forks).
+    env: dict = field(default_factory=dict)
 
 
 class ProcessManager:
@@ -52,8 +55,12 @@ class ProcessManager:
 
     def generate_config(self) -> None:
         AdminEnvManager(_cli_root()).ensure()
+        self._ensure_gunicorn_config()
         lines = [f"{pd.name}: {pd.command}\n" for pd in self._process_definitions()]
         self.procfile_path.write_text("".join(lines))
+
+    def _ensure_gunicorn_config(self) -> None:
+        GunicornManager(self.bench).generate_config()
 
     # ── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -110,6 +117,7 @@ class ProcessManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 preexec_fn=os.setsid,
+                env={**os.environ, **pd.env} if pd.env else None,
             )
             color = _COLORS[i % len(_COLORS)]
             self._procs[pd.name] = proc
@@ -158,22 +166,30 @@ class ProcessManager:
     # ── Process definitions ─────────────────────────────────────────────────
 
     def _prod_process_definitions(self) -> List[ProcessDefinition]:
-        if self.bench.config.production.process_manager == "systemd":
-            num_workers = self.bench.config.workers.default_count + self.bench.config.workers.short_count + self.bench.config.workers.long_count
-            worker_defs: List[ProcessDefinition] = [self._worker_pool_definition("long,default,short", num_workers)]
+        if self.bench.config.production.use_companion_manager:
+            defs = [self._web_definition(), self._admin_definition()]
+        elif self.bench.config.production.process_manager == "systemd":
+            all_queues = ",".join(q for group in self.bench.config.workers.groups for q in group.queues)
+            num_workers = sum(group.count for group in self.bench.config.workers.groups)
+            worker_defs: List[ProcessDefinition] = [self._worker_pool_definition(all_queues, num_workers)]
+            defs = [
+                self._web_definition(),
+                self._socketio_definition(),
+                self._admin_definition(),
+                *worker_defs,
+            ]
         else:
             worker_defs = [
-                *self._worker_definitions("default", self.bench.config.workers.default_count),
-                *self._worker_definitions("short", self.bench.config.workers.short_count),
-                *self._worker_definitions("long", self.bench.config.workers.long_count),
+                pd
+                for group in self.bench.config.workers.groups
+                for pd in self._worker_definitions(",".join(group.queues), group.count)
             ]
-        defs = [
-            self._web_definition(),
-            self._socketio_definition(),
-            self._admin_definition(),
-            *worker_defs,
-            *[pd for entry in self.bench.config.workers.custom for pd in self._worker_definitions(entry.queue, entry.count)],
-        ]
+            defs = [
+                self._web_definition(),
+                self._socketio_definition(),
+                self._admin_definition(),
+                *worker_defs,
+            ]
         defs.append(self._redis_definition("redis_cache", "redis_cache.conf"))
         defs.append(self._redis_definition("redis_queue", "redis_queue.conf"))
         return defs
@@ -191,27 +207,45 @@ class ProcessManager:
             return self._web_definition(dev=True)
         return pd
 
+    def _py_memory_env(self) -> dict:
+        """Caps glibc malloc arenas for the Python procs to keep RSS down.
+        Companions inherit it by forking the gunicorn master."""
+        arenas = self.bench.config.gunicorn.malloc_arena_max
+        if arenas and arenas > 0:
+            return {"MALLOC_ARENA_MAX": str(arenas)}
+        return {}
+
     def _web_definition(self, dev: bool = False) -> ProcessDefinition:
-        port = self.bench.config.http_port
         sites = self.bench.sites_path
         python = self.bench.env_path / "bin" / "python"
-        env_prefix = "DEV_SERVER=1 " if dev else ""
+        if dev:
+            port = self.bench.config.http_port
+            return ProcessDefinition(
+                name="web",
+                command=f"cd {sites} && DEV_SERVER=1 {python} -m frappe.utils.bench_helper frappe serve --port {port} --noreload",
+                log_file=self.bench.logs_path / "web.log",
+            )
+        gunicorn = self.bench.env_path / "bin" / "gunicorn"
         return ProcessDefinition(
             name="web",
-            command=f"cd {sites} && {env_prefix}{python} -m frappe.utils.bench_helper frappe serve --port {port} --noreload",
+            command=f"cd {sites} && {gunicorn} -c ../config/gunicorn.conf.py frappe.app:application",
             log_file=self.bench.logs_path / "web.log",
+            env=self._py_memory_env(),
         )
 
     def _socketio_definition(self) -> ProcessDefinition:
         if self.bench.config.socketio_backend == "python":
             python = self.bench.env_path / "bin" / "python"
             command = f"cd {self.bench.path} && {python} -m frappe.realtime.server"
+            backend_env = self._py_memory_env()
         else:
             command = f"cd {self.bench.sites_path} && node {self.bench.apps_path}/frappe/socketio.js"
+            backend_env = {}
         return ProcessDefinition(
             name="socketio",
             command=command,
             log_file=self.bench.logs_path / "socketio.log",
+            env=backend_env,
         )
 
     def _worker_pool_definition(self, queues: str, num_workers: int) -> ProcessDefinition:
@@ -220,6 +254,7 @@ class ProcessManager:
             name="worker_pool",
             command=f"cd {sites} && {self.bench.env_path}/bin/python -m frappe.utils.bench_helper frappe worker-pool --num-workers {num_workers} --queue {queues}",
             log_file=self.bench.logs_path / "worker_pool.log",
+            env=self._py_memory_env(),
         )
 
     def _worker_definitions(self, queue: str, count: int) -> List[ProcessDefinition]:
@@ -229,6 +264,7 @@ class ProcessManager:
                 name=f"worker_{queue}_{i}",
                 command=f"cd {sites} && {self.bench.env_path}/bin/python -m frappe.utils.bench_helper frappe worker --queue {queue}",
                 log_file=self.bench.logs_path / f"worker_{queue}_{i}.log",
+                env=self._py_memory_env(),
             )
             for i in range(1, count + 1)
         ]

@@ -7,6 +7,7 @@ VALID_PROCESS_MANAGERS = ("none", "supervisor", "systemd")
 class ProductionConfig:
     process_manager: str = "none"  # none | supervisor | systemd
     nginx: bool = False
+    use_companion_manager: bool = False
 
     @property
     def enabled(self) -> bool:

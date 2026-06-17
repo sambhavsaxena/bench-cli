@@ -141,3 +141,16 @@ def test_upstream_block_uses_bench_http_port(tmp_path: Path) -> None:
 
     assert "server 127.0.0.1:8001;" in upstream
     assert "8000" not in upstream
+
+
+def test_socketio_location_proxies_to_socketio_port(tmp_path: Path) -> None:
+    data = copy.deepcopy(_BASE_DATA)
+    data["bench"] = {"name": "test-bench", "python": "3.14", "socketio_port": 9000}
+    bench = _make_bench(tmp_path, data)
+    manager = NginxManager(bench)
+
+    config = manager._generate_site_config(_BASE_SITE, ssl_ready=False)
+
+    assert "location /socket.io" in config
+    assert "proxy_pass         http://127.0.0.1:9000;" in config
+    assert "proxy_set_header   Upgrade $http_upgrade;" in config

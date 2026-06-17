@@ -80,7 +80,7 @@ class InitCommand:
         from bench_cli.platform import is_linux
 
         production = self.bench.config.production.nginx
-        volume_enabled = is_linux()  # ZFS is mandatory on Linux; macOS is dev-only
+        volume_enabled = is_linux() and self.bench.config.volume.enabled
         # Passwordless sudo is configured by install.sh before init ever runs.
         self._total_steps = 10 + (3 if production else 0) + (1 if volume_enabled else 0)
 

@@ -42,7 +42,16 @@ class SystemdProcessManager(ProcessManager):
         from bench_cli.managers.admin_env_manager import AdminEnvManager
 
         AdminEnvManager(_cli_root()).ensure()
+        self._ensure_gunicorn_config()
         self.systemd_conf_dir.mkdir(parents=True, exist_ok=True)
+
+        # Remove stale unit files (e.g. after switching process managers or enabling
+        # companion mode, which drops socketio/worker services).
+        target_file = self._target_name()
+        for path in list(self.systemd_conf_dir.iterdir()):
+            if path.is_file() and (path.suffix == ".service" or path.name == target_file):
+                path.unlink()
+
         defs = self._prod_process_definitions()
         for pd in defs:
             (self.systemd_conf_dir / self._unit_name(pd.name)).write_text(self._render_unit(pd))
@@ -53,7 +62,19 @@ class SystemdProcessManager(ProcessManager):
 
         self.user_unit_dir.mkdir(parents=True, exist_ok=True)
         defs = self._prod_process_definitions()
-        units = [self._unit_name(pd.name) for pd in defs] + [self._target_name()]
+        units = set(self._unit_name(pd.name) for pd in defs) | {self._target_name()}
+
+        # Remove stale user-unit symlinks pointing to this bench's config dir.
+        for dst in self.user_unit_dir.iterdir():
+            if not (dst.is_symlink() and dst.exists()):
+                continue
+            try:
+                points_to_bench = dst.resolve().parent == self.systemd_conf_dir.resolve()
+            except OSError:
+                continue
+            if points_to_bench and dst.name not in units:
+                dst.unlink()
+
         for unit in units:
             src = (self.systemd_conf_dir / unit).resolve()
             dst = self.user_unit_dir / unit
@@ -130,6 +151,8 @@ class SystemdProcessManager(ProcessManager):
         while m := re.match(r"^([A-Z_][A-Z0-9_]*)=(\S+)\s+", cmd):
             env_lines.append(f"Environment={m.group(1)}={m.group(2)}")
             cmd = cmd[m.end() :]
+        for key, value in pd.env.items():
+            env_lines.append(f"Environment={key}={value}")
 
         working_dir = ""
         if m2 := re.match(r"^cd\s+(\S+)\s*&&\s*", cmd):
@@ -154,6 +177,8 @@ class SystemdProcessManager(ProcessManager):
         ]
         if is_redis:
             lines.append("TimeoutStopSec=300")
+        if pd.name == "web" and self.bench.config.production.use_companion_manager:
+            lines.append("TimeoutStopSec=1600")
         lines += [
             f"StandardOutput=append:{pd.log_file}",
             f"StandardError=append:{pd.log_file}.error.log",

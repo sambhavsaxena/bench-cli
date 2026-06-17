@@ -23,11 +23,12 @@ class ImageConfig:
 
 @dataclass
 class VolumeConfig:
-    """ZFS storage for the bench. Mandatory on Linux — every bench gets a pool,
-    backed by a dedicated disk, a preallocated image file on the root
-    filesystem, or auto-resolved at init time. Skipped on macOS (dev only).
-    Snapshots are always available."""
+    """ZFS storage for the bench. Set enabled = false to skip ZFS entirely.
+    When enabled on Linux, every bench gets a pool backed by a dedicated disk,
+    a preallocated image file on the root filesystem, or auto-resolved at init
+    time. Skipped on macOS (dev only)."""
 
+    enabled: bool = False
     pool: str = "bench-pool"
     backing: str = "auto"  # "device" | "image" | "auto" (resolved during bench init)
     device: str = ""

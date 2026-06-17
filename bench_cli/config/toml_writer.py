@@ -45,23 +45,18 @@ def bench_config_to_toml(config: BenchConfig) -> str:
         parts.append(f'version = "{r.version}"')
     parts.append("")
 
-    w = config.workers
-    parts.append("[workers]")
-    parts.append(f"default = {w.default_count}")
-    parts.append(f"short = {w.short_count}")
-    parts.append(f"long = {w.long_count}")
-    for entry in w.custom:
+    for group in config.workers.groups:
+        parts.append("[[workers]]")
+        queues = ", ".join(f'"{q}"' for q in group.queues)
+        parts.append(f"queues = [{queues}]")
+        parts.append(f"count = {group.count}")
         parts.append("")
-        parts.append("[[workers.custom]]")
-        parts.append(f'queue = "{entry.queue}"')
-        parts.append(f"count = {entry.count}")
-        parts.append(f"timeout = {entry.timeout}")
-    parts.append("")
 
     p = config.production
     parts.append("[production]")
     parts.append(f'process_manager = "{p.process_manager}"')
     parts.append(f"nginx = {'true' if p.nginx else 'false'}")
+    parts.append(f"use_companion_manager = {'true' if p.use_companion_manager else 'false'}")
     parts.append("")
 
     n = config.nginx
@@ -71,6 +66,15 @@ def bench_config_to_toml(config: BenchConfig) -> str:
     parts.append(f'config_dir = "{n.config_dir}"')
     parts.append(f'worker_processes = "{n.worker_processes}"')
     parts.append(f'client_max_body_size = "{n.client_max_body_size}"')
+    parts.append("")
+
+    g = config.gunicorn
+    parts.append("[gunicorn]")
+    parts.append(f"workers = {g.workers}")
+    parts.append(f"threads = {g.threads}")
+    parts.append(f"timeout = {g.timeout}")
+    parts.append(f'worker_class = "{g.worker_class}"')
+    parts.append(f"malloc_arena_max = {g.malloc_arena_max or 2}")
     parts.append("")
 
     le = config.letsencrypt
@@ -89,27 +93,28 @@ def bench_config_to_toml(config: BenchConfig) -> str:
     parts.append("")
 
     v = config.volume
-    parts.append("[volume]")
-    parts.append(f'pool = "{v.pool}"')
-    parts.append(f'backing = "{v.backing}"')
-    if v.backing == "image":
+    if v.enabled:
+        parts.append("[volume]")
+        parts.append(f'pool = "{v.pool}"')
+        parts.append(f'backing = "{v.backing}"')
+        if v.backing == "image":
+            parts.append("")
+            parts.append("[volume.image]")
+            parts.append(f'size = "{v.image.size}"')
+            parts.append(f'path = "{v.image_path}"')
+        elif v.backing == "device":
+            parts.append(f'device = "{v.device}"')
+        # backing = "auto" carries no device/image fields — resolved during bench init
         parts.append("")
-        parts.append("[volume.image]")
-        parts.append(f'size = "{v.image.size}"')
-        parts.append(f'path = "{v.image_path}"')
-    elif v.backing == "device":
-        parts.append(f'device = "{v.device}"')
-    # backing = "auto" carries no device/image fields — resolved during bench init
-    parts.append("")
-    parts.append("[volume.benches]")
-    parts.append(f'reservation = "{v.benches.reservation}"')
-    parts.append(f'quota = "{v.benches.quota}"')
-    parts.append(f'data_dir = "{v.benches.data_dir}"')
-    parts.append("")
-    parts.append("[volume.mariadb]")
-    parts.append(f'reservation = "{v.mariadb.reservation}"')
-    parts.append(f'quota = "{v.mariadb.quota}"')
-    parts.append(f'data_dir = "{v.mariadb.data_dir}"')
-    parts.append("")
+        parts.append("[volume.benches]")
+        parts.append(f'reservation = "{v.benches.reservation}"')
+        parts.append(f'quota = "{v.benches.quota}"')
+        parts.append(f'data_dir = "{v.benches.data_dir}"')
+        parts.append("")
+        parts.append("[volume.mariadb]")
+        parts.append(f'reservation = "{v.mariadb.reservation}"')
+        parts.append(f'quota = "{v.mariadb.quota}"')
+        parts.append(f'data_dir = "{v.mariadb.data_dir}"')
+        parts.append("")
 
     return "\n".join(parts)
