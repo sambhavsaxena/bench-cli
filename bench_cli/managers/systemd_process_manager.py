@@ -114,6 +114,21 @@ class SystemdProcessManager(ProcessManager):
         env = self._systemctl_env()
         run_command(self._systemctl("daemon-reload"), env=env)
         run_command(self._systemctl("enable", self._target_name()), env=env)
+        self._activate_admin_socket(env)
+
+    def _activate_admin_socket(self, env: dict) -> None:
+        """(Re)open the admin socket so a changed ListenStream takes effect.
+
+        systemd marks a running .socket "not functional" when its ListenStream
+        changes under a daemon-reload (no open fd left) — that surfaces as a 502
+        through nginx. A plain restart reopens the listener. Stop any running
+        admin service first so it can't keep holding a stale port; the next
+        request re-activates it on the new one via the socket."""
+        socket = self._admin_socket_name()
+        service = self._unit_name("admin")
+        subprocess.run(self._systemctl("stop", service), capture_output=True, env=env)
+        run_command(self._systemctl("enable", socket), env=env)
+        run_command(self._systemctl("restart", socket), env=env)
 
     def _installed_bench_units(self) -> set[str]:
         """Names of this bench's currently-loaded .service/.socket units."""
