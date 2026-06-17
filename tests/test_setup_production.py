@@ -48,29 +48,19 @@ def test_persist_preserves_other_fields(tmp_path: Path) -> None:
     assert data["apps"][0]["name"] == "frappe"
 
 
-def test_ensure_admin_domain_assume_yes_keeps_current(tmp_path: Path) -> None:
+def test_check_admin_domain_uses_toml_value(tmp_path: Path) -> None:
     bench = _make_bench(tmp_path, admin_domain="keep.example.com")
-    cmd = SetupProductionCommand(bench, assume_yes=True)
-    cmd._ensure_admin_domain()  # must not prompt or raise
+    cmd = SetupProductionCommand(bench)
+    cmd._check_admin_domain()  # must not prompt or raise
     assert bench.config.admin.domain == "keep.example.com"
 
 
-def test_ensure_admin_domain_rejects_sibling_owned(tmp_path: Path) -> None:
+def test_check_admin_domain_rejects_sibling_owned(tmp_path: Path) -> None:
     _make_bench(tmp_path, name="other", admin_domain="shared.example.com")
     bench = _make_bench(tmp_path, name="prod", admin_domain="shared.example.com")
-    cmd = SetupProductionCommand(bench, assume_yes=True)
+    cmd = SetupProductionCommand(bench)
     with pytest.raises(BenchError, match="already used by bench 'other'"):
-        cmd._ensure_admin_domain()
-
-
-def test_ensure_admin_domain_interactive_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    bench = _make_bench(tmp_path, admin_domain="prod-admin.localhost")
-    monkeypatch.setattr("builtins.input", lambda _: "admin.real.com")
-    cmd = SetupProductionCommand(bench, assume_yes=False)
-    cmd._ensure_admin_domain()
-    assert bench.config.admin.domain == "admin.real.com"
-    data = tomllib.loads((bench.path / "bench.toml").read_text())
-    assert data["admin"]["domain"] == "admin.real.com"
+        cmd._check_admin_domain()
 
 
 def test_needs_letsencrypt(tmp_path: Path) -> None:

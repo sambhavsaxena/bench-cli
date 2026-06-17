@@ -29,17 +29,16 @@ class SetupProductionCommand(Command):
 
     @classmethod
     def from_args(cls, args, bench):
-        return cls(bench, skip_nginx=args.skip_nginx, assume_yes=args.yes)
+        return cls(bench, skip_nginx=args.skip_nginx)
 
-    def __init__(self, bench: "Bench", skip_nginx: bool = False, assume_yes: bool = False) -> None:
+    def __init__(self, bench: "Bench", skip_nginx: bool = False) -> None:
         self.bench = bench
         self.skip_nginx = skip_nginx
-        self.assume_yes = assume_yes
 
     def run(self) -> None:
         self._require_linux()
         if not self.skip_nginx:
-            self._ensure_admin_domain()
+            self._check_admin_domain()
         self.bench.config.validate()
         self._write_dns_multitenancy()
         if self.bench.config.production.process_manager == "systemd":
@@ -65,25 +64,16 @@ class SetupProductionCommand(Command):
             )
             sys.exit(1)
 
-    def _ensure_admin_domain(self) -> None:
-        """Admin is reached only via its domain in production, so it must be set.
-        Confirm/collect it interactively; under --yes keep whatever is configured
-        (a value always exists after `bench new`)."""
-        current = self.bench.config.admin.domain
-        domain = current
-        if not self.assume_yes:
-            prompt = f"Admin domain [{current}]: " if current else "Admin domain (e.g. admin.example.com): "
-            entered = input(prompt).strip()
-            if entered:
-                domain = entered
+    def _check_admin_domain(self) -> None:
+        """Admin is reached only via its domain in production. Use whatever is in
+        bench.toml (validate() enforces it is present); just reject a domain that
+        another bench already claims."""
+        domain = self.bench.config.admin.domain
         if not domain:
-            raise BenchError("admin.domain is required for production setup.")
+            return  # validate() raises the required-in-prod error, naming the bench
         owner = host_owner(self.bench.path, domain)
         if owner:
             raise BenchError(f"Admin domain '{domain}' is already used by bench '{owner}'.")
-        if domain != current:
-            self._persist({"admin": {"domain": domain}})
-            self.bench.config.admin.domain = domain
 
     def _enable_nginx(self) -> None:
         """Persist production.nginx so later `bench new-site` reloads nginx."""
