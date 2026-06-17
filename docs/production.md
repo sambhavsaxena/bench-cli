@@ -131,6 +131,8 @@ threads = 4                          # threads per worker (used by gthread)
 timeout = 120
 worker_class = "sync"
 malloc_arena_max = 2                 # cap glibc malloc arenas; 0 = unset
+malloc_trim_requests = 100           # trim heap after N requests; 0 = disable
+malloc_trim_interval = 300           # trim heap every N seconds, even when idle; 0 = disable
 ```
 
 Gunicorn binds automatically to `127.0.0.1:<bench.http_port>` and `preload_app` is always enabled.
@@ -142,6 +144,8 @@ Gunicorn binds automatically to `127.0.0.1:<bench.http_port>` and `preload_app` 
 | `timeout` | int | no | `120` | Request timeout in seconds. |
 | `worker_class` | string | no | `sync` | Gunicorn worker class. |
 | `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to reduce RSS. `0` leaves the system default unset. |
+| `malloc_trim_requests` | int | no | `100` | Wakes the heap-trim timer early once this many requests have been served, returning memory promptly under load. `0` disables the request trigger. |
+| `malloc_trim_interval` | int | no | `300` | Interval (seconds) of a background timer thread in each web worker that calls `malloc_trim(0)` to return freed glibc heap to the OS — fires even when idle, reclaiming RSS after a transient spike. `0` disables the timer; both knobs `0` removes the hook. |
 
 ### `letsencrypt` section (new)
 
@@ -359,6 +363,8 @@ class GunicornConfig:
     timeout: int = 120
     worker_class: str = 'sync'
     malloc_arena_max: int = 2
+    malloc_trim_requests: int = 100
+    malloc_trim_interval: int = 300
 ```
 
 #### `LetsEncryptConfig`

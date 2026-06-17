@@ -104,6 +104,8 @@ workers = 4
 threads = 4                          # threads per worker (used by gthread)
 timeout = 120
 malloc_arena_max = 2                 # cap glibc malloc arenas to reduce RSS; 0 = unset
+malloc_trim_requests = 100           # trim heap after N requests; 0 = disable
+malloc_trim_interval = 300           # trim heap every N seconds (idle too); 0 = disable
 
 [volume]
 pool = "bench-pool"
@@ -160,6 +162,8 @@ workers = 4
 threads = 4
 timeout = 120
 malloc_arena_max = 2
+malloc_trim_requests = 100
+malloc_trim_interval = 300
 
 [letsencrypt]
 email = "ops@example.com"
