@@ -133,7 +133,8 @@ threads = 4                          # threads per worker (used by gthread)
 timeout = 120
 worker_class = "sync"
 malloc_arena_max = 2                 # cap glibc malloc arenas; 0 = unset
-memory_allocator = "pymalloc"        # pymalloc (prod) | jemalloc (demo/overcommit: eager RAM release)
+max_requests = 0                     # recycle web worker after N requests to release heap; 0 = disabled
+max_requests_jitter = 0              # random +/- spread on max_requests
 ```
 
 Gunicorn binds automatically to `127.0.0.1:<bench.http_port>` and `preload_app` is always enabled.
@@ -144,8 +145,9 @@ Gunicorn binds automatically to `127.0.0.1:<bench.http_port>` and `preload_app` 
 | `threads` | int | no | `4` | Threads per worker. Used by the `gthread` worker class. |
 | `timeout` | int | no | `120` | Request timeout in seconds. |
 | `worker_class` | string | no | `sync` | Gunicorn worker class. |
-| `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to reduce RSS. `0` leaves the system default unset. |
-| `memory_allocator` | string | no | `pymalloc` | Allocator for the web/companion/worker Python processes. `pymalloc` (default) is stock CPython on glibc — best throughput, for production (`malloc_arena_max` applies here). `jemalloc` `LD_PRELOAD`s jemalloc tuned with `MALLOC_CONF=dirty_decay_ms:0,muzzy_decay_ms:0` to return freed pages to the OS immediately — for small/demo benches and overcommitted hosts (e.g. Firecracker). Falls back to `pymalloc` if `libjemalloc` is missing. |
+| `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to keep idle RSS down. `0` leaves the system default unset. |
+| `max_requests` | int | no | `0` | Recycle each web worker after this many requests, re-forking it from the preloaded master to return heap accreted under load. `0` disables it (safe for production); set e.g. `2000` on demo/overcommit benches to bound RSS. |
+| `max_requests_jitter` | int | no | `0` | Random ± spread on `max_requests` so workers don't all recycle at once. |
 
 ### `letsencrypt` section (new)
 
@@ -363,7 +365,8 @@ class GunicornConfig:
     timeout: int = 120
     worker_class: str = 'sync'
     malloc_arena_max: int = 2
-    memory_allocator: str = 'pymalloc'
+    max_requests: int = 0
+    max_requests_jitter: int = 0
 ```
 
 #### `LetsEncryptConfig`

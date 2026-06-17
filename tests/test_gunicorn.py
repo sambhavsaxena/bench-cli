@@ -44,7 +44,7 @@ def test_gunicorn_config_defaults() -> None:
     assert cfg.threads == 4
     assert cfg.timeout == 120
     assert cfg.worker_class == "sync"
-    assert cfg.memory_allocator == "pymalloc"
+    assert cfg.malloc_arena_max == 2
 
 
 def test_gunicorn_default_bind_uses_bench_http_port(tmp_path: Path) -> None:
@@ -428,19 +428,17 @@ def test_systemd_web_service_has_long_timeout_in_companion_mode(tmp_path: Path) 
 
 
 def test_malloc_arena_max_in_units(tmp_path: Path) -> None:
-    # The arena cap only applies on the pymalloc path; force it so the test does
-    # not depend on whether jemalloc happens to be installed on the host.
     from bench_cli.managers.supervisor_process_manager import SupervisorProcessManager
     from bench_cli.managers.systemd_process_manager import SystemdProcessManager
 
-    bench = make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator="pymalloc"))  # default arena 2
+    bench = make_bench(tmp_path, gunicorn=GunicornConfig())  # default arena 2
     systemd = SystemdProcessManager(bench)
     web = next(pd for pd in systemd._prod_process_definitions() if pd.name == "web")
     assert "Environment=MALLOC_ARENA_MAX=2" in systemd._render_unit(web)
     assert 'MALLOC_ARENA_MAX="2"' in SupervisorProcessManager(bench)._render_program(web, "web")
 
     # 0 disables the cap (no env emitted).
-    bench0 = make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator="pymalloc", malloc_arena_max=0))
+    bench0 = make_bench(tmp_path, gunicorn=GunicornConfig(malloc_arena_max=0))
     systemd0 = SystemdProcessManager(bench0)
     web0 = next(pd for pd in systemd0._prod_process_definitions() if pd.name == "web")
     assert "MALLOC_ARENA_MAX" not in systemd0._render_unit(web0)
@@ -451,48 +449,45 @@ def test_malloc_arena_max_validation(tmp_path: Path) -> None:
         make_bench(tmp_path, gunicorn=GunicornConfig(malloc_arena_max=-1)).config.validate()
 
 
-# ── memory allocator ──────────────────────────────────────────────────────────
+def test_py_memory_env_caps_glibc_arenas(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, GunicornConfig(malloc_arena_max=2))
+    assert ProcessManager(bench)._py_memory_env() == {"MALLOC_ARENA_MAX": "2"}
+
+    bench0 = make_bench(tmp_path, GunicornConfig(malloc_arena_max=0))
+    assert ProcessManager(bench0)._py_memory_env() == {}
 
 
-def test_memory_allocator_validation(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="memory_allocator"):
-        make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator="auto")).config.validate()
-    for value in ("jemalloc", "pymalloc"):
-        make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator=value)).config.validate()
+# ── max_requests worker recycling ───────────────────────────────────────────────
 
 
-def test_toml_writer_includes_memory_allocator(tmp_path: Path) -> None:
+def test_max_requests_emitted_when_enabled(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, gunicorn=GunicornConfig(max_requests=2000, max_requests_jitter=200))
+    bench.config_path.mkdir(parents=True, exist_ok=True)
+    GunicornManager(bench).generate_config()
+    content = (bench.config_path / "gunicorn.conf.py").read_text()
+    assert "max_requests = 2000" in content
+    assert "max_requests_jitter = 200" in content
+
+
+def test_max_requests_absent_when_disabled(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, gunicorn=GunicornConfig(max_requests=0))
+    bench.config_path.mkdir(parents=True, exist_ok=True)
+    GunicornManager(bench).generate_config()
+    content = (bench.config_path / "gunicorn.conf.py").read_text()
+    assert "max_requests" not in content
+
+
+def test_max_requests_validation(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="max_requests"):
+        make_bench(tmp_path, gunicorn=GunicornConfig(max_requests=-1)).config.validate()
+    with pytest.raises(ConfigError, match="max_requests_jitter"):
+        make_bench(tmp_path, gunicorn=GunicornConfig(max_requests_jitter=-1)).config.validate()
+
+
+def test_toml_writer_includes_max_requests(tmp_path: Path) -> None:
     from bench_cli.config.toml_writer import bench_config_to_toml
 
-    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="jemalloc"))
+    bench = make_bench(tmp_path, GunicornConfig(max_requests=2000, max_requests_jitter=200))
     toml = bench_config_to_toml(bench.config)
-    assert 'memory_allocator = "jemalloc"' in toml
-
-
-def test_py_memory_env_jemalloc_releases_memory_aggressively(tmp_path: Path) -> None:
-    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="jemalloc", malloc_arena_max=2))
-    manager = ProcessManager(bench)
-    with patch("bench_cli.managers.process_manager._jemalloc_path", return_value="/lib/libjemalloc.so.2"):
-        env = manager._py_memory_env()
-    assert env["LD_PRELOAD"] == "/lib/libjemalloc.so.2"
-    # Immediate purge to the OS; no glibc arena cap on the jemalloc path.
-    assert env["MALLOC_CONF"] == "dirty_decay_ms:0,muzzy_decay_ms:0"
-    assert "MALLOC_ARENA_MAX" not in env
-
-
-def test_py_memory_env_pymalloc_caps_glibc_arenas(tmp_path: Path) -> None:
-    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="pymalloc", malloc_arena_max=2))
-    manager = ProcessManager(bench)
-    # pymalloc never LD_PRELOADs jemalloc even when it is installed.
-    with patch("bench_cli.managers.process_manager._jemalloc_path", return_value="/lib/libjemalloc.so.2"):
-        env = manager._py_memory_env()
-    assert env == {"MALLOC_ARENA_MAX": "2"}
-
-
-def test_py_memory_env_jemalloc_falls_back_when_missing(tmp_path: Path) -> None:
-    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="jemalloc", malloc_arena_max=2))
-    manager = ProcessManager(bench)
-    # libjemalloc absent -> fall back to the pymalloc path (arena cap).
-    with patch("bench_cli.managers.process_manager._jemalloc_path", return_value=None):
-        env = manager._py_memory_env()
-    assert env == {"MALLOC_ARENA_MAX": "2"}
+    assert "max_requests = 2000" in toml
+    assert "max_requests_jitter = 200" in toml

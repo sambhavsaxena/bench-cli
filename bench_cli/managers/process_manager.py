@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import functools
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -18,28 +16,6 @@ from bench_cli.managers.gunicorn_manager import GunicornManager
 
 if TYPE_CHECKING:
     from bench_cli.core.bench import Bench
-
-# Purge freed pages back to the OS immediately (MADV_DONTNEED) instead of
-# jemalloc's lazy default, so RSS shrinks promptly — what matters on
-# memory-overcommitted hosts. Synchronous on free, so it is fork-safe (no
-# background thread, which would not survive gunicorn's fork anyway).
-_JEMALLOC_CONF = "dirty_decay_ms:0,muzzy_decay_ms:0"
-
-
-@functools.lru_cache(maxsize=1)
-def _jemalloc_path() -> str | None:
-    """Full path to libjemalloc on this host, or None if not installed.
-
-    Parses ``ldconfig -p`` (the loader cache); the path is suitable for
-    LD_PRELOAD."""
-    try:
-        out = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    # e.g. "libjemalloc.so.2 (libc6,x86-64) => /lib/x86_64-linux-gnu/libjemalloc.so.2"
-    match = re.search(r"^\s*libjemalloc\.so.*=>\s*(\S+)", out, re.MULTILINE)
-    return match.group(1) if match else None
-
 
 def _cli_root() -> Path:
     import bench_cli as _pkg
@@ -231,16 +207,7 @@ class ProcessManager:
         return pd
 
     def _py_memory_env(self) -> dict:
-        """Allocator/RSS tuning env for the Python procs. The web process passes
-        it to gunicorn, whose companions inherit it by forking the master.
-
-        "jemalloc" LD_PRELOADs jemalloc tuned to return freed pages to the OS
-        immediately (pymalloc still pools small objects on top); it falls back to
-        the pymalloc path if libjemalloc is not installed. "pymalloc" is stock
-        CPython on glibc, with the glibc arena cap to keep RSS down."""
-        if self.bench.config.gunicorn.memory_allocator == "jemalloc":
-            if jemalloc := _jemalloc_path():
-                return {"LD_PRELOAD": jemalloc, "MALLOC_CONF": _JEMALLOC_CONF}
+        """Cap glibc malloc arenas for the Python procs to keep idle RSS down."""
         arenas = self.bench.config.gunicorn.malloc_arena_max
         if arenas and arenas > 0:
             return {"MALLOC_ARENA_MAX": str(arenas)}

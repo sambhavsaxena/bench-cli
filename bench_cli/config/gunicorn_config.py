@@ -7,10 +7,6 @@ class GunicornConfig:
     threads: int = 4
     timeout: int = 120
     worker_class: str = "sync"
-    malloc_arena_max: int = 2  # MALLOC_ARENA_MAX for Python procs (pymalloc only); 0/absent = unset
-    # Allocator for the Python procs. "pymalloc" (default) is stock CPython on
-    # glibc — best throughput, for production. "jemalloc" LD_PRELOADs jemalloc
-    # tuned to release freed memory to the OS immediately (MADV_DONTNEED) — for
-    # small/demo benches and memory-overcommitted hosts. Falls back to pymalloc
-    # if libjemalloc is not installed.
-    memory_allocator: str = "pymalloc"
+    malloc_arena_max: int = 2  # cap glibc malloc arenas; 0 = unset
+    max_requests: int = 0  # recycle web worker after N requests to release heap; 0 = disabled
+    max_requests_jitter: int = 0

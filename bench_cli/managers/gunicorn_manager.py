@@ -66,6 +66,9 @@ class GunicornManager:
             f"timeout = {cfg.timeout}\n"
             f"preload_app = True\n"
         )
+        if cfg.max_requests > 0:
+            base += f"max_requests = {cfg.max_requests}\n"
+            base += f"max_requests_jitter = {cfg.max_requests_jitter}\n"
         if not self.bench.config.production.use_companion_manager:
             return base
         return self._render_companion_config(base)
