@@ -19,6 +19,8 @@ def iter_sibling_benches(bench_path: Path) -> Iterator[tuple[Path, "BenchConfig"
     Skips ``bench_path`` itself and any directory without a readable
     ``bench.toml``. ``bench_path`` need not exist yet (e.g. during ``bench new``).
     """
+    import tomllib
+
     from bench_cli.core.bench import BenchConfig
 
     parent = bench_path.parent
@@ -32,7 +34,10 @@ def iter_sibling_benches(bench_path: Path) -> Iterator[tuple[Path, "BenchConfig"
         if not toml_path.exists():
             continue
         try:
-            yield sibling, BenchConfig.from_file(toml_path)
+            # Parse-only (no validate) so half-configured siblings are still
+            # seen — important for port-offset collision avoidance and
+            # cross-bench hostname checks.
+            yield sibling, BenchConfig._from_dict(tomllib.loads(toml_path.read_text()))
         except Exception:
             continue
 
