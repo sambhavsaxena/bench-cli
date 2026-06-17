@@ -224,6 +224,51 @@ bench-cli/
         └── config/                 # Procfile, Redis configs, Nginx configs
 ```
 
+## Contributing an app to the marketplace
+
+Add an entry to `registry/apps.json` and open a PR. Every PR that touches this file runs an automated Semgrep security scan against the app's source code. The PR cannot be merged until the scan passes.
+
+### Entry format
+
+```json
+{
+  "name": "my_app",
+  "title": "My App",
+  "description": "One-sentence description of what the app does.",
+  "repo": "https://github.com/your-org/my-app",
+  "branch": "version-16",
+  "branches": ["version-15", "version-16"],
+  "logo_url": "https://example.com/logo.png",
+  "category": "Applications",
+  "stars": 0
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | Yes | Unique snake_case identifier |
+| `title` | Yes | Human-readable display name |
+| `description` | Yes | Short description shown in the marketplace UI |
+| `repo` | Yes | Public GitHub repo URL |
+| `branch` | Yes | Default branch installed when a user picks this app |
+| `branches` | Yes | All available version branches |
+| `logo_url` | No | Direct URL to a square PNG/SVG logo; `null` if none |
+| `category` | Yes | One of: `Applications`, `Compliance`, `Developer Tools`, `Extensions`, `Integrations`, `Utilities` |
+| `stars` | No | Leave as `0`; the registry sync job updates this automatically |
+
+### What the security scan checks
+
+When your PR is opened, CI clones your repo at the specified `branch` and runs Semgrep against it. **Blocking** findings (which fail the PR) include:
+
+- **Code injection** — `eval()`, `exec()`, `compile()`, `safe_eval()`
+- **Template injection** — `render_template` with dynamic input, direct `jinja2.Environment` / `Template` construction
+- **SQL injection** — f-strings or `.format()` inside `frappe.db.sql()`
+- **Command execution** — `subprocess` with `shell=True`, `os.system`, `execute_in_shell`
+- **Authorization bypass** — `ignore_permissions=True` in whitelist methods, `frappe.set_user`
+- **Multitenancy violations** — module-level globals, `redis.set`/`redis.get` without scoping
+
+Non-blocking findings (WARNING severity) are reported but do not prevent merge — a Frappe reviewer will note them in the PR.
+
 ## Testing
 
 ```bash
