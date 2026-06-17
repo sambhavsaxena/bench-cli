@@ -155,7 +155,7 @@ class BenchConfig:
             timeout=data.get("timeout", 120),
             worker_class=data.get("worker_class", "sync"),
             malloc_arena_max=data.get("malloc_arena_max", 0),
-            memory_allocator=data.get("memory_allocator", "auto"),
+            memory_allocator=data.get("memory_allocator", "pymalloc"),
         )
 
     @staticmethod
@@ -304,9 +304,9 @@ class BenchConfig:
             raise ConfigError(
                 f"gunicorn.malloc_arena_max must be a non-negative integer, got '{self.gunicorn.malloc_arena_max}'."
             )
-        if self.gunicorn.memory_allocator not in ("auto", "jemalloc", "pymalloc"):
+        if self.gunicorn.memory_allocator not in ("jemalloc", "pymalloc"):
             raise ConfigError(
-                f"gunicorn.memory_allocator must be one of 'auto', 'jemalloc', 'pymalloc', got '{self.gunicorn.memory_allocator}'."
+                f"gunicorn.memory_allocator must be 'jemalloc' or 'pymalloc', got '{self.gunicorn.memory_allocator}'."
             )
 
     def _validate_mariadb_version(self) -> None:

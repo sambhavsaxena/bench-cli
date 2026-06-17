@@ -104,7 +104,7 @@ workers = 4
 threads = 4                          # threads per worker (used by gthread)
 timeout = 120
 malloc_arena_max = 2                 # cap glibc malloc arenas to reduce RSS; 0 = unset
-memory_allocator = "auto"            # auto|jemalloc|pymalloc; auto uses jemalloc if installed
+memory_allocator = "pymalloc"        # pymalloc (prod) | jemalloc (demo/overcommit: releases RAM eagerly)
 
 [volume]
 pool = "bench-pool"
@@ -161,7 +161,7 @@ workers = 4
 threads = 4
 timeout = 120
 malloc_arena_max = 2
-memory_allocator = "auto"
+memory_allocator = "pymalloc"
 
 [letsencrypt]
 email = "ops@example.com"

@@ -133,7 +133,7 @@ threads = 4                          # threads per worker (used by gthread)
 timeout = 120
 worker_class = "sync"
 malloc_arena_max = 2                 # cap glibc malloc arenas; 0 = unset
-memory_allocator = "auto"            # auto | jemalloc | pymalloc (auto picks jemalloc if installed)
+memory_allocator = "pymalloc"        # pymalloc (prod) | jemalloc (demo/overcommit: eager RAM release)
 ```
 
 Gunicorn binds automatically to `127.0.0.1:<bench.http_port>` and `preload_app` is always enabled.
@@ -145,7 +145,7 @@ Gunicorn binds automatically to `127.0.0.1:<bench.http_port>` and `preload_app` 
 | `timeout` | int | no | `120` | Request timeout in seconds. |
 | `worker_class` | string | no | `sync` | Gunicorn worker class. |
 | `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to reduce RSS. `0` leaves the system default unset. |
-| `memory_allocator` | string | no | `auto` | System allocator for the web/companion/worker Python processes. `auto` uses jemalloc (via `LD_PRELOAD`) when `libjemalloc` is on the host, else stock pymalloc/glibc. jemalloc fragments less than glibc over long runtimes; pymalloc still pools small objects on top. `jemalloc` / `pymalloc` force the choice (explicit `jemalloc` falls back if missing). `malloc_arena_max` applies only on the pymalloc path. |
+| `memory_allocator` | string | no | `pymalloc` | Allocator for the web/companion/worker Python processes. `pymalloc` (default) is stock CPython on glibc — best throughput, for production (`malloc_arena_max` applies here). `jemalloc` `LD_PRELOAD`s jemalloc tuned with `MALLOC_CONF=dirty_decay_ms:0,muzzy_decay_ms:0` to return freed pages to the OS immediately — for small/demo benches and overcommitted hosts (e.g. Firecracker). Falls back to `pymalloc` if `libjemalloc` is missing. |
 
 ### `letsencrypt` section (new)
 
@@ -363,7 +363,7 @@ class GunicornConfig:
     timeout: int = 120
     worker_class: str = 'sync'
     malloc_arena_max: int = 2
-    memory_allocator: str = 'auto'
+    memory_allocator: str = 'pymalloc'
 ```
 
 #### `LetsEncryptConfig`

@@ -58,7 +58,7 @@ threads = 4             # threads per worker (used by gthread worker class)
 timeout = 120
 worker_class = "sync"
 malloc_arena_max = 2    # cap glibc malloc arenas to reduce RSS; 0 = leave unset
-memory_allocator = "auto"  # auto | jemalloc | pymalloc (auto picks jemalloc if installed)
+memory_allocator = "pymalloc"  # pymalloc (prod) | jemalloc (demo/overcommit: eager RAM release)
 
 # ── Let's Encrypt (production only) ──────────────────────────────────────────
 [letsencrypt]
@@ -194,7 +194,7 @@ Omit this section entirely for development benches. The section is only read by 
 | `timeout` | int | no | `120` | Request timeout in seconds. |
 | `worker_class` | string | no | `sync` | Gunicorn worker class. |
 | `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to reduce RSS. `0` leaves the system default unset. |
-| `memory_allocator` | string | no | `auto` | System allocator for the web/companion/worker Python processes. `auto` uses **jemalloc** (via `LD_PRELOAD`) when `libjemalloc` is present on the host, otherwise the stock **pymalloc**/glibc. jemalloc fragments less than glibc on long-running processes; pymalloc still pools small objects on top either way. `jemalloc` / `pymalloc` force the choice (explicit `jemalloc` falls back to pymalloc if the lib is missing). `malloc_arena_max` only applies on the pymalloc path. |
+| `memory_allocator` | string | no | `pymalloc` | Allocator for the web/companion/worker Python processes. **`pymalloc`** (default) is stock CPython on glibc — best throughput, for production; `malloc_arena_max` caps glibc arenas here. **`jemalloc`** `LD_PRELOAD`s jemalloc tuned with `MALLOC_CONF=dirty_decay_ms:0,muzzy_decay_ms:0` so freed pages are returned to the OS immediately (`MADV_DONTNEED`) instead of lazily — for small/demo benches and memory-overcommitted hosts (e.g. Firecracker), where eagerly releasing RAM matters more than peak throughput. pymalloc still pools small objects on top. Falls back to `pymalloc` if `libjemalloc` is not installed. |
 
 ### `[letsencrypt]` _(production only)_
 
@@ -255,7 +255,7 @@ bench validates `bench.toml` before executing any command. Violations produce a 
 5. Worker counts must be positive integers.
 6. `letsencrypt.email` must match a basic email pattern (`^[^@]+@[^@]+\.[^@]+$`) when present.
 7. `nginx.http_port` and `nginx.https_port` must be distinct.
-8. `gunicorn.workers`, `gunicorn.threads`, and `gunicorn.timeout` must be positive integers; `gunicorn.worker_class` must be a non-empty string; `gunicorn.malloc_arena_max` must be a non-negative integer; `gunicorn.memory_allocator` must be one of `auto`, `jemalloc`, `pymalloc`.
+8. `gunicorn.workers`, `gunicorn.threads`, and `gunicorn.timeout` must be positive integers; `gunicorn.worker_class` must be a non-empty string; `gunicorn.malloc_arena_max` must be a non-negative integer; `gunicorn.memory_allocator` must be `jemalloc` or `pymalloc`.
 9. `mariadb.version` and `redis.version`, when present, must match `^\d+(\.\d+)*$` (e.g. `"10.6"`, `"7"`, `"7.0"`).
 10. When `volume.enabled = true`: `pool` and `device` must be non-empty; `reservation` and `quota` values must match a valid ZFS size pattern (e.g. `"10G"`, `"500M"`, `"1T"`); quota must be greater than reservation for both datasets.
 

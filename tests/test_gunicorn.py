@@ -44,7 +44,7 @@ def test_gunicorn_config_defaults() -> None:
     assert cfg.threads == 4
     assert cfg.timeout == 120
     assert cfg.worker_class == "sync"
-    assert cfg.memory_allocator == "auto"
+    assert cfg.memory_allocator == "pymalloc"
 
 
 def test_gunicorn_default_bind_uses_bench_http_port(tmp_path: Path) -> None:
@@ -456,8 +456,8 @@ def test_malloc_arena_max_validation(tmp_path: Path) -> None:
 
 def test_memory_allocator_validation(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="memory_allocator"):
-        make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator="tcmalloc")).config.validate()
-    for value in ("auto", "jemalloc", "pymalloc"):
+        make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator="auto")).config.validate()
+    for value in ("jemalloc", "pymalloc"):
         make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator=value)).config.validate()
 
 
@@ -469,36 +469,30 @@ def test_toml_writer_includes_memory_allocator(tmp_path: Path) -> None:
     assert 'memory_allocator = "jemalloc"' in toml
 
 
-def test_py_memory_env_uses_jemalloc_when_available(tmp_path: Path) -> None:
-    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="auto", malloc_arena_max=2))
+def test_py_memory_env_jemalloc_releases_memory_aggressively(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="jemalloc", malloc_arena_max=2))
     manager = ProcessManager(bench)
     with patch("bench_cli.managers.process_manager._jemalloc_path", return_value="/lib/libjemalloc.so.2"):
         env = manager._py_memory_env()
-    # Only LD_PRELOAD: pymalloc stays on top, glibc arena cap is irrelevant.
-    assert env == {"LD_PRELOAD": "/lib/libjemalloc.so.2"}
+    assert env["LD_PRELOAD"] == "/lib/libjemalloc.so.2"
+    # Immediate purge to the OS; no glibc arena cap on the jemalloc path.
+    assert env["MALLOC_CONF"] == "dirty_decay_ms:0,muzzy_decay_ms:0"
+    assert "MALLOC_ARENA_MAX" not in env
 
 
-def test_py_memory_env_falls_back_to_pymalloc_when_jemalloc_missing(tmp_path: Path) -> None:
-    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="auto", malloc_arena_max=2))
-    manager = ProcessManager(bench)
-    with patch("bench_cli.managers.process_manager._jemalloc_path", return_value=None):
-        env = manager._py_memory_env()
-    assert env == {"MALLOC_ARENA_MAX": "2"}
-
-
-def test_py_memory_env_pymalloc_skips_jemalloc_lookup(tmp_path: Path) -> None:
+def test_py_memory_env_pymalloc_caps_glibc_arenas(tmp_path: Path) -> None:
     bench = make_bench(tmp_path, GunicornConfig(memory_allocator="pymalloc", malloc_arena_max=2))
     manager = ProcessManager(bench)
-    # Even if jemalloc is installed, an explicit pymalloc choice ignores it.
+    # pymalloc never LD_PRELOADs jemalloc even when it is installed.
     with patch("bench_cli.managers.process_manager._jemalloc_path", return_value="/lib/libjemalloc.so.2"):
         env = manager._py_memory_env()
-    assert "LD_PRELOAD" not in env
     assert env == {"MALLOC_ARENA_MAX": "2"}
 
 
-def test_py_memory_env_explicit_jemalloc_missing_falls_back(tmp_path: Path) -> None:
-    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="jemalloc", malloc_arena_max=0))
+def test_py_memory_env_jemalloc_falls_back_when_missing(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="jemalloc", malloc_arena_max=2))
     manager = ProcessManager(bench)
+    # libjemalloc absent -> fall back to the pymalloc path (arena cap).
     with patch("bench_cli.managers.process_manager._jemalloc_path", return_value=None):
         env = manager._py_memory_env()
-    assert env == {}  # no jemalloc, arena cap disabled -> nothing to set
+    assert env == {"MALLOC_ARENA_MAX": "2"}

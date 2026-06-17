@@ -19,6 +19,13 @@ from bench_cli.managers.gunicorn_manager import GunicornManager
 if TYPE_CHECKING:
     from bench_cli.core.bench import Bench
 
+# Purge freed pages back to the OS immediately (MADV_DONTNEED) instead of
+# jemalloc's lazy default, so RSS shrinks promptly — what matters on
+# memory-overcommitted hosts. Synchronous on free, so it is fork-safe (no
+# background thread, which would not survive gunicorn's fork anyway).
+_JEMALLOC_CONF = "dirty_decay_ms:0,muzzy_decay_ms:0"
+
+
 @functools.lru_cache(maxsize=1)
 def _jemalloc_path() -> str | None:
     """Full path to libjemalloc on this host, or None if not installed.
@@ -227,14 +234,13 @@ class ProcessManager:
         """Allocator/RSS tuning env for the Python procs. The web process passes
         it to gunicorn, whose companions inherit it by forking the master.
 
-        With jemalloc (the default when the lib is present) we only LD_PRELOAD
-        it — pymalloc still pools small objects on top, while jemalloc backs the
-        larger allocations and fragments far less than glibc. Otherwise we use
-        plain pymalloc/glibc and cap glibc arenas to keep RSS down."""
-        choice = self.bench.config.gunicorn.memory_allocator
-        jemalloc = _jemalloc_path() if choice in ("auto", "jemalloc") else None
-        if jemalloc:
-            return {"LD_PRELOAD": jemalloc}
+        "jemalloc" LD_PRELOADs jemalloc tuned to return freed pages to the OS
+        immediately (pymalloc still pools small objects on top); it falls back to
+        the pymalloc path if libjemalloc is not installed. "pymalloc" is stock
+        CPython on glibc, with the glibc arena cap to keep RSS down."""
+        if self.bench.config.gunicorn.memory_allocator == "jemalloc":
+            if jemalloc := _jemalloc_path():
+                return {"LD_PRELOAD": jemalloc, "MALLOC_CONF": _JEMALLOC_CONF}
         arenas = self.bench.config.gunicorn.malloc_arena_max
         if arenas and arenas > 0:
             return {"MALLOC_ARENA_MAX": str(arenas)}
