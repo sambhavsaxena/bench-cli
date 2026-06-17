@@ -44,8 +44,7 @@ def test_gunicorn_config_defaults() -> None:
     assert cfg.threads == 4
     assert cfg.timeout == 120
     assert cfg.worker_class == "sync"
-    assert cfg.malloc_trim_requests == 100
-    assert cfg.malloc_trim_interval == 300
+    assert cfg.memory_allocator == "auto"
 
 
 def test_gunicorn_default_bind_uses_bench_http_port(tmp_path: Path) -> None:
@@ -429,17 +428,19 @@ def test_systemd_web_service_has_long_timeout_in_companion_mode(tmp_path: Path) 
 
 
 def test_malloc_arena_max_in_units(tmp_path: Path) -> None:
+    # The arena cap only applies on the pymalloc path; force it so the test does
+    # not depend on whether jemalloc happens to be installed on the host.
     from bench_cli.managers.supervisor_process_manager import SupervisorProcessManager
     from bench_cli.managers.systemd_process_manager import SystemdProcessManager
 
-    bench = make_bench(tmp_path, gunicorn=GunicornConfig())  # default 2
+    bench = make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator="pymalloc"))  # default arena 2
     systemd = SystemdProcessManager(bench)
     web = next(pd for pd in systemd._prod_process_definitions() if pd.name == "web")
     assert "Environment=MALLOC_ARENA_MAX=2" in systemd._render_unit(web)
     assert 'MALLOC_ARENA_MAX="2"' in SupervisorProcessManager(bench)._render_program(web, "web")
 
     # 0 disables the cap (no env emitted).
-    bench0 = make_bench(tmp_path, gunicorn=GunicornConfig(malloc_arena_max=0))
+    bench0 = make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator="pymalloc", malloc_arena_max=0))
     systemd0 = SystemdProcessManager(bench0)
     web0 = next(pd for pd in systemd0._prod_process_definitions() if pd.name == "web")
     assert "MALLOC_ARENA_MAX" not in systemd0._render_unit(web0)
@@ -450,79 +451,54 @@ def test_malloc_arena_max_validation(tmp_path: Path) -> None:
         make_bench(tmp_path, gunicorn=GunicornConfig(malloc_arena_max=-1)).config.validate()
 
 
-# ── malloc_trim timer hook ────────────────────────────────────────────────────
+# ── memory allocator ──────────────────────────────────────────────────────────
 
 
-def _gen_gunicorn_config(tmp_path: Path, gunicorn: GunicornConfig | None = None, *, companion: bool = False) -> str:
-    bench = make_bench(tmp_path, gunicorn)
-    bench.config.production.use_companion_manager = companion
-    bench.config_path.mkdir(parents=True, exist_ok=True)
-    GunicornManager(bench).generate_config()
-    return (bench.config_path / "gunicorn.conf.py").read_text()
+def test_memory_allocator_validation(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="memory_allocator"):
+        make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator="tcmalloc")).config.validate()
+    for value in ("auto", "jemalloc", "pymalloc"):
+        make_bench(tmp_path, gunicorn=GunicornConfig(memory_allocator=value)).config.validate()
 
 
-def test_malloc_trim_hook_in_standalone_config(tmp_path: Path) -> None:
-    content = _gen_gunicorn_config(tmp_path)
-    # A real timer thread, started per worker, drives the periodic trim.
-    assert "def post_worker_init(worker):" in content
-    assert "def _malloc_trim_loop():" in content
-    assert "_malloc_trim_event.wait(timeout)" in content
-    assert "_libc.malloc_trim(0)" in content
-    # Default: trim every 300s, wake early at 100 requests.
-    assert "timeout = 300 or None" in content
-    assert "_malloc_trim_count >= 100" in content
-    assert "def post_request(worker, req, environ, resp):" in content
-    compile(content, "gunicorn.conf.py", "exec")
-
-
-def test_malloc_trim_hook_in_companion_config(tmp_path: Path) -> None:
-    content = _gen_gunicorn_config(tmp_path, companion=True)
-    assert "def post_worker_init(worker):" in content
-    assert "_libc.malloc_trim(0)" in content
-    # Coexists with the existing companion hooks.
-    assert "def when_ready(server):" in content
-    compile(content, "gunicorn.conf.py", "exec")
-
-
-def test_malloc_trim_hook_honours_custom_thresholds(tmp_path: Path) -> None:
-    content = _gen_gunicorn_config(tmp_path, GunicornConfig(malloc_trim_requests=50, malloc_trim_interval=60))
-    assert "timeout = 60 or None" in content
-    assert "_malloc_trim_count >= 50" in content
-
-
-def test_malloc_trim_hook_omitted_when_both_disabled(tmp_path: Path) -> None:
-    content = _gen_gunicorn_config(tmp_path, GunicornConfig(malloc_trim_requests=0, malloc_trim_interval=0))
-    assert "post_worker_init" not in content
-    assert "malloc_trim" not in content
-
-
-def test_malloc_trim_interval_only_omits_post_request(tmp_path: Path) -> None:
-    # No request threshold -> pure periodic timer, no post_request hook.
-    content = _gen_gunicorn_config(tmp_path, GunicornConfig(malloc_trim_requests=0, malloc_trim_interval=300))
-    assert "timeout = 300 or None" in content
-    assert "def post_request" not in content
-    compile(content, "gunicorn.conf.py", "exec")
-
-
-def test_malloc_trim_requests_only_waits_indefinitely(tmp_path: Path) -> None:
-    # No interval -> thread blocks until the request counter wakes it.
-    content = _gen_gunicorn_config(tmp_path, GunicornConfig(malloc_trim_requests=100, malloc_trim_interval=0))
-    assert "timeout = 0 or None" in content
-    assert "def post_request(worker, req, environ, resp):" in content
-    compile(content, "gunicorn.conf.py", "exec")
-
-
-def test_malloc_trim_validation(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="malloc_trim_requests"):
-        make_bench(tmp_path, gunicorn=GunicornConfig(malloc_trim_requests=-1)).config.validate()
-    with pytest.raises(ConfigError, match="malloc_trim_interval"):
-        make_bench(tmp_path, gunicorn=GunicornConfig(malloc_trim_interval=-1)).config.validate()
-
-
-def test_toml_writer_includes_malloc_trim(tmp_path: Path) -> None:
+def test_toml_writer_includes_memory_allocator(tmp_path: Path) -> None:
     from bench_cli.config.toml_writer import bench_config_to_toml
 
-    bench = make_bench(tmp_path, GunicornConfig(malloc_trim_requests=50, malloc_trim_interval=60))
+    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="jemalloc"))
     toml = bench_config_to_toml(bench.config)
-    assert "malloc_trim_requests = 50" in toml
-    assert "malloc_trim_interval = 60" in toml
+    assert 'memory_allocator = "jemalloc"' in toml
+
+
+def test_py_memory_env_uses_jemalloc_when_available(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="auto", malloc_arena_max=2))
+    manager = ProcessManager(bench)
+    with patch("bench_cli.managers.process_manager._jemalloc_path", return_value="/lib/libjemalloc.so.2"):
+        env = manager._py_memory_env()
+    # Only LD_PRELOAD: pymalloc stays on top, glibc arena cap is irrelevant.
+    assert env == {"LD_PRELOAD": "/lib/libjemalloc.so.2"}
+
+
+def test_py_memory_env_falls_back_to_pymalloc_when_jemalloc_missing(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="auto", malloc_arena_max=2))
+    manager = ProcessManager(bench)
+    with patch("bench_cli.managers.process_manager._jemalloc_path", return_value=None):
+        env = manager._py_memory_env()
+    assert env == {"MALLOC_ARENA_MAX": "2"}
+
+
+def test_py_memory_env_pymalloc_skips_jemalloc_lookup(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="pymalloc", malloc_arena_max=2))
+    manager = ProcessManager(bench)
+    # Even if jemalloc is installed, an explicit pymalloc choice ignores it.
+    with patch("bench_cli.managers.process_manager._jemalloc_path", return_value="/lib/libjemalloc.so.2"):
+        env = manager._py_memory_env()
+    assert "LD_PRELOAD" not in env
+    assert env == {"MALLOC_ARENA_MAX": "2"}
+
+
+def test_py_memory_env_explicit_jemalloc_missing_falls_back(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, GunicornConfig(memory_allocator="jemalloc", malloc_arena_max=0))
+    manager = ProcessManager(bench)
+    with patch("bench_cli.managers.process_manager._jemalloc_path", return_value=None):
+        env = manager._py_memory_env()
+    assert env == {}  # no jemalloc, arena cap disabled -> nothing to set

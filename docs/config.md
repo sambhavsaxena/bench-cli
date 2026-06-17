@@ -58,8 +58,7 @@ threads = 4             # threads per worker (used by gthread worker class)
 timeout = 120
 worker_class = "sync"
 malloc_arena_max = 2    # cap glibc malloc arenas to reduce RSS; 0 = leave unset
-malloc_trim_requests = 100  # trim freed heap after N requests; 0 = disable
-malloc_trim_interval = 300  # trim freed heap every N seconds, even when idle; 0 = disable
+memory_allocator = "auto"  # auto | jemalloc | pymalloc (auto picks jemalloc if installed)
 
 # ── Let's Encrypt (production only) ──────────────────────────────────────────
 [letsencrypt]
@@ -195,8 +194,7 @@ Omit this section entirely for development benches. The section is only read by 
 | `timeout` | int | no | `120` | Request timeout in seconds. |
 | `worker_class` | string | no | `sync` | Gunicorn worker class. |
 | `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to reduce RSS. `0` leaves the system default unset. |
-| `malloc_trim_requests` | int | no | `100` | Wakes the heap-trim timer early once this many requests have been served, so memory is returned promptly under load. `0` disables the request trigger. |
-| `malloc_trim_interval` | int | no | `300` | Interval (seconds) of a background timer thread in each web worker that calls `malloc_trim(0)` to return freed glibc heap to the OS — fires even when the worker is idle, reclaiming RSS after a transient spike. `0` disables the timer. Both knobs `0` removes the hook entirely. |
+| `memory_allocator` | string | no | `auto` | System allocator for the web/companion/worker Python processes. `auto` uses **jemalloc** (via `LD_PRELOAD`) when `libjemalloc` is present on the host, otherwise the stock **pymalloc**/glibc. jemalloc fragments less than glibc on long-running processes; pymalloc still pools small objects on top either way. `jemalloc` / `pymalloc` force the choice (explicit `jemalloc` falls back to pymalloc if the lib is missing). `malloc_arena_max` only applies on the pymalloc path. |
 
 ### `[letsencrypt]` _(production only)_
 
@@ -257,7 +255,7 @@ bench validates `bench.toml` before executing any command. Violations produce a 
 5. Worker counts must be positive integers.
 6. `letsencrypt.email` must match a basic email pattern (`^[^@]+@[^@]+\.[^@]+$`) when present.
 7. `nginx.http_port` and `nginx.https_port` must be distinct.
-8. `gunicorn.workers`, `gunicorn.threads`, and `gunicorn.timeout` must be positive integers; `gunicorn.worker_class` must be a non-empty string; `gunicorn.malloc_arena_max`, `gunicorn.malloc_trim_requests`, and `gunicorn.malloc_trim_interval` must be non-negative integers.
+8. `gunicorn.workers`, `gunicorn.threads`, and `gunicorn.timeout` must be positive integers; `gunicorn.worker_class` must be a non-empty string; `gunicorn.malloc_arena_max` must be a non-negative integer; `gunicorn.memory_allocator` must be one of `auto`, `jemalloc`, `pymalloc`.
 9. `mariadb.version` and `redis.version`, when present, must match `^\d+(\.\d+)*$` (e.g. `"10.6"`, `"7"`, `"7.0"`).
 10. When `volume.enabled = true`: `pool` and `device` must be non-empty; `reservation` and `quota` values must match a valid ZFS size pattern (e.g. `"10G"`, `"500M"`, `"1T"`); quota must be greater than reservation for both datasets.
 

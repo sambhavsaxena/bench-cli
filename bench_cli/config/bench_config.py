@@ -155,8 +155,7 @@ class BenchConfig:
             timeout=data.get("timeout", 120),
             worker_class=data.get("worker_class", "sync"),
             malloc_arena_max=data.get("malloc_arena_max", 0),
-            malloc_trim_requests=data.get("malloc_trim_requests", 100),
-            malloc_trim_interval=data.get("malloc_trim_interval", 300),
+            memory_allocator=data.get("memory_allocator", "auto"),
         )
 
     @staticmethod
@@ -305,13 +304,9 @@ class BenchConfig:
             raise ConfigError(
                 f"gunicorn.malloc_arena_max must be a non-negative integer, got '{self.gunicorn.malloc_arena_max}'."
             )
-        if not isinstance(self.gunicorn.malloc_trim_requests, int) or self.gunicorn.malloc_trim_requests < 0:
+        if self.gunicorn.memory_allocator not in ("auto", "jemalloc", "pymalloc"):
             raise ConfigError(
-                f"gunicorn.malloc_trim_requests must be a non-negative integer, got '{self.gunicorn.malloc_trim_requests}'."
-            )
-        if not isinstance(self.gunicorn.malloc_trim_interval, int) or self.gunicorn.malloc_trim_interval < 0:
-            raise ConfigError(
-                f"gunicorn.malloc_trim_interval must be a non-negative integer, got '{self.gunicorn.malloc_trim_interval}'."
+                f"gunicorn.memory_allocator must be one of 'auto', 'jemalloc', 'pymalloc', got '{self.gunicorn.memory_allocator}'."
             )
 
     def _validate_mariadb_version(self) -> None:

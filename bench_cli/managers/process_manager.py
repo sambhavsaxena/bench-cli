@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import functools
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -16,6 +18,20 @@ from bench_cli.managers.gunicorn_manager import GunicornManager
 
 if TYPE_CHECKING:
     from bench_cli.core.bench import Bench
+
+@functools.lru_cache(maxsize=1)
+def _jemalloc_path() -> str | None:
+    """Full path to libjemalloc on this host, or None if not installed.
+
+    Parses ``ldconfig -p`` (the loader cache); the path is suitable for
+    LD_PRELOAD."""
+    try:
+        out = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    # e.g. "libjemalloc.so.2 (libc6,x86-64) => /lib/x86_64-linux-gnu/libjemalloc.so.2"
+    match = re.search(r"^\s*libjemalloc\.so.*=>\s*(\S+)", out, re.MULTILINE)
+    return match.group(1) if match else None
 
 
 def _cli_root() -> Path:
@@ -208,8 +224,17 @@ class ProcessManager:
         return pd
 
     def _py_memory_env(self) -> dict:
-        """Caps glibc malloc arenas for the Python procs to keep RSS down.
-        Companions inherit it by forking the gunicorn master."""
+        """Allocator/RSS tuning env for the Python procs. The web process passes
+        it to gunicorn, whose companions inherit it by forking the master.
+
+        With jemalloc (the default when the lib is present) we only LD_PRELOAD
+        it — pymalloc still pools small objects on top, while jemalloc backs the
+        larger allocations and fragments far less than glibc. Otherwise we use
+        plain pymalloc/glibc and cap glibc arenas to keep RSS down."""
+        choice = self.bench.config.gunicorn.memory_allocator
+        jemalloc = _jemalloc_path() if choice in ("auto", "jemalloc") else None
+        if jemalloc:
+            return {"LD_PRELOAD": jemalloc}
         arenas = self.bench.config.gunicorn.malloc_arena_max
         if arenas and arenas > 0:
             return {"MALLOC_ARENA_MAX": str(arenas)}
