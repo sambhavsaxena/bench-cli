@@ -3,7 +3,7 @@ import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from bench_cli.exceptions import BenchError, CommandError
 
@@ -35,6 +35,24 @@ def iter_sibling_benches(bench_path: Path) -> Iterator[tuple[Path, "BenchConfig"
             yield sibling, BenchConfig.from_file(toml_path)
         except Exception:
             continue
+
+
+def host_owner(bench_path: Path, host: str) -> Optional[str]:
+    """Return the name of *another* bench that already claims ``host`` — either
+    as one of its sites (``sites/<host>/``) or as its ``admin.domain`` — or
+    ``None`` if the host is free across all sibling benches.
+
+    Used to keep site names and admin domains unique across all benches served
+    by the same nginx, so two benches can never fight over the same hostname.
+    """
+    if not host:
+        return None
+    for sibling, config in iter_sibling_benches(bench_path):
+        if (sibling / "sites" / host / "site_config.json").exists():
+            return config.name
+        if config.admin.domain and config.admin.domain == host:
+            return config.name
+    return None
 
 
 def write_toml(path: Path, data: dict) -> None:

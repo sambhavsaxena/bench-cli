@@ -63,8 +63,16 @@ class NewSiteCommand(Command):
                 manager.build_assets_for_app(app)
 
     def _validate(self) -> None:
+        from bench_cli.utils import host_owner
+
         if (self.bench.sites_path / self.name / "site_config.json").exists():
             raise BenchError(f"Site '{self.name}' already exists.")
+        owner = host_owner(self.bench.path, self.name)
+        if owner:
+            raise BenchError(
+                f"'{self.name}' is already used by bench '{owner}' (as a site or its admin domain). "
+                f"All benches share one nginx, so hostnames must be unique."
+            )
         apps_txt = self.bench.sites_path / "apps.txt"
         installed = set(apps_txt.read_text().splitlines()) if apps_txt.exists() else set()
         for app in self.apps:
