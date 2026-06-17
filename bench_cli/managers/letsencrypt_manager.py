@@ -14,6 +14,22 @@ if TYPE_CHECKING:
 _CERT_EXPIRY_THRESHOLD_DAYS = 30
 
 
+def _is_public_domain(domain: str) -> bool:
+    """A domain certbot can actually validate over the public internet.
+    Local dev domains (``*.localhost``) are excluded."""
+    return bool(domain) and not domain.endswith(".localhost")
+
+
+def needs_letsencrypt(bench: "Bench") -> bool:
+    """True if any certificate is obtainable: an SSL site, or a public admin
+    domain. Requires letsencrypt.email to be configured."""
+    if not bench.config.letsencrypt.email:
+        return False
+    if any(site.config.ssl for site in bench.sites()):
+        return True
+    return _is_public_domain(bench.config.admin.domain)
+
+
 class LetsEncryptManager:
     def __init__(self, bench: "Bench") -> None:
         self.bench = bench
@@ -58,7 +74,7 @@ class LetsEncryptManager:
         for site in self.bench.sites():
             if site.config.ssl:
                 self.obtain(site.config)
-        if self.bench.config.admin.domain:
+        if _is_public_domain(self.bench.config.admin.domain):
             self.obtain_admin()
 
     def obtain_admin(self) -> None:

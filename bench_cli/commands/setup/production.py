@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import argparse
 import json
 import sys
+import tomllib
 from typing import TYPE_CHECKING
 
 from bench_cli.commands.base import Command
+from bench_cli.exceptions import BenchError
+from bench_cli.utils import host_owner, write_toml
 
 if TYPE_CHECKING:
     from bench_cli.core.bench import Bench
@@ -12,21 +16,38 @@ if TYPE_CHECKING:
 
 class SetupProductionCommand(Command):
     name = "production"
-    help = "Full production setup (nginx + supervisor)."
+    help = "Full production setup (process manager + nginx)."
     group = "setup"
 
-    def __init__(self, bench: "Bench") -> None:
+    @classmethod
+    def add_arguments(cls, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--skip-nginx",
+            action="store_true",
+            help="Configure the process manager only; skip nginx and Let's Encrypt.",
+        )
+
+    @classmethod
+    def from_args(cls, args, bench):
+        return cls(bench, skip_nginx=args.skip_nginx, assume_yes=args.yes)
+
+    def __init__(self, bench: "Bench", skip_nginx: bool = False, assume_yes: bool = False) -> None:
         self.bench = bench
+        self.skip_nginx = skip_nginx
+        self.assume_yes = assume_yes
 
     def run(self) -> None:
-        self.bench.config.validate()
         self._require_linux()
+        if not self.skip_nginx:
+            self._ensure_admin_domain()
+        self.bench.config.validate()
         self._write_dns_multitenancy()
         if self.bench.config.production.process_manager == "systemd":
             self._setup_systemd()
         else:
             self._setup_supervisor()
-        if self.bench.config.production.nginx:
+        if not self.skip_nginx:
+            self._enable_nginx()
             self._setup_nginx()
             self._setup_letsencrypt_if_needed()
 
@@ -43,6 +64,40 @@ class SetupProductionCommand(Command):
                 file=sys.stderr,
             )
             sys.exit(1)
+
+    def _ensure_admin_domain(self) -> None:
+        """Admin is reached only via its domain in production, so it must be set.
+        Confirm/collect it interactively; under --yes keep whatever is configured
+        (a value always exists after `bench new`)."""
+        current = self.bench.config.admin.domain
+        domain = current
+        if not self.assume_yes:
+            prompt = f"Admin domain [{current}]: " if current else "Admin domain (e.g. admin.example.com): "
+            entered = input(prompt).strip()
+            if entered:
+                domain = entered
+        if not domain:
+            raise BenchError("admin.domain is required for production setup.")
+        owner = host_owner(self.bench.path, domain)
+        if owner:
+            raise BenchError(f"Admin domain '{domain}' is already used by bench '{owner}'.")
+        if domain != current:
+            self._persist({"admin": {"domain": domain}})
+            self.bench.config.admin.domain = domain
+
+    def _enable_nginx(self) -> None:
+        """Persist production.nginx so later `bench new-site` reloads nginx."""
+        if not self.bench.config.production.nginx:
+            self.bench.config.production.nginx = True
+            self._persist({"production": {"nginx": True}})
+
+    def _persist(self, updates: dict) -> None:
+        """Merge ``updates`` into bench.toml in place, preserving all other fields."""
+        toml_path = self.bench.path / "bench.toml"
+        data = tomllib.loads(toml_path.read_text())
+        for section, values in updates.items():
+            data.setdefault(section, {}).update(values)
+        write_toml(toml_path, data)
 
     def _write_dns_multitenancy(self) -> None:
         common_config_path = self.bench.sites_path / "common_site_config.json"
@@ -81,7 +136,9 @@ class SetupProductionCommand(Command):
         SetupNginxCommand(self.bench).run()
 
     def _setup_letsencrypt_if_needed(self) -> None:
-        if not any(site.config.ssl for site in self.bench.sites()):
+        from bench_cli.managers.letsencrypt_manager import needs_letsencrypt
+
+        if not needs_letsencrypt(self.bench):
             return
         from bench_cli.commands.setup.letsencrypt import SetupLetsEncryptCommand
 
@@ -105,3 +162,6 @@ class SetupProductionCommand(Command):
                 http_port = self.bench.config.nginx.http_port
                 port_suffix = "" if http_port == 80 else f":{http_port}"
                 print(f"  http://{site.config.name}{port_suffix}")
+        if not self.skip_nginx:
+            scheme = "https" if nginx_manager.admin_cert_exists() else "http"
+            print(f"Admin:\n  {scheme}://{self.bench.config.admin.domain}")
