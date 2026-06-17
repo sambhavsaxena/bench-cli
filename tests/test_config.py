@@ -470,3 +470,10 @@ def test_toml_writer_volume_device_backing() -> None:
     assert 'backing = "device"' in toml
     assert 'device = "/dev/sdb"' in toml
     assert "[volume.image]" not in toml
+
+
+def test_admin_internal_port_is_port_plus_one() -> None:
+    from bench_cli.config.admin_config import AdminConfig
+
+    assert AdminConfig(port=8002).internal_port == 8003
+    assert AdminConfig(port=9100).internal_port == 9101

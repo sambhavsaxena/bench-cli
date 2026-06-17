@@ -61,6 +61,8 @@ threads = 4             # threads per worker (used by gthread worker class)
 timeout = 120
 worker_class = "sync"
 malloc_arena_max = 2    # cap glibc malloc arenas to reduce RSS; 0 = leave unset
+max_requests = 0        # recycle the web worker after N requests to release heap; 0 = disabled
+max_requests_jitter = 0 # random +/- spread on max_requests
 
 # ── Let's Encrypt (production only) ──────────────────────────────────────────
 [letsencrypt]
@@ -200,7 +202,9 @@ Omit this section entirely for development benches. The section is only read by 
 | `threads` | int | no | `4` | Threads per worker. Used by the `gthread` worker class. |
 | `timeout` | int | no | `120` | Request timeout in seconds. |
 | `worker_class` | string | no | `sync` | Gunicorn worker class. |
-| `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to reduce RSS. `0` leaves the system default unset. |
+| `malloc_arena_max` | int | no | `2` (new benches); `0` if absent | Caps glibc malloc arenas (`MALLOC_ARENA_MAX`) for the web/companion/worker Python processes to keep idle RSS down on these multi-threaded processes. `0` leaves the system default unset. |
+| `max_requests` | int | no | `0` | Recycle each web worker after this many requests, re-forking it from the preloaded master to release the heap it accreted under load. `0` disables it (safe for production); set e.g. `2000` on demo/overcommit benches to bound RSS. |
+| `max_requests_jitter` | int | no | `0` | Random ± spread on `max_requests` so workers don't all recycle at once. |
 
 ### `[letsencrypt]` _(production only)_
 
@@ -261,7 +265,7 @@ bench validates `bench.toml` before executing any command. Violations produce a 
 5. Worker counts must be positive integers.
 6. `letsencrypt.email` must match a basic email pattern (`^[^@]+@[^@]+\.[^@]+$`) when present.
 7. `nginx.http_port` and `nginx.https_port` must be distinct.
-8. `gunicorn.workers`, `gunicorn.threads`, and `gunicorn.timeout` must be positive integers; `gunicorn.worker_class` must be a non-empty string; `gunicorn.malloc_arena_max` must be a non-negative integer.
+8. `gunicorn.workers`, `gunicorn.threads`, and `gunicorn.timeout` must be positive integers; `gunicorn.worker_class` must be a non-empty string; `gunicorn.malloc_arena_max`, `gunicorn.max_requests`, and `gunicorn.max_requests_jitter` must be non-negative integers.
 9. `mariadb.version` and `redis.version`, when present, must match `^\d+(\.\d+)*$` (e.g. `"10.6"`, `"7"`, `"7.0"`).
 10. `mariadb.instance`, when present, must match `^[a-zA-Z][a-zA-Z0-9_-]*$`; `mariadb.data_dir`, when present, must be an absolute path.
 11. When `volume.enabled = true`: `pool` and `device` must be non-empty; `reservation` and `quota` values must match a valid ZFS size pattern (e.g. `"10G"`, `"500M"`, `"1T"`); quota must be greater than reservation for both datasets.

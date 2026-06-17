@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from bench_cli.config.worker_config import WorkerGroup
     from bench_cli.core.bench import Bench
 
 
@@ -15,7 +14,6 @@ _COMPANION_QUEUE_STOP_TIMEOUT = {
     "long": 1560,
     "short": 360,
 }
-_COMPANION_SCHEDULER_TIMEOUT = 60
 _COMPANION_SOCKETIO_TIMEOUT = 30
 
 
@@ -27,9 +25,32 @@ class GunicornManager:
     def config_path(self) -> Path:
         return self.bench.config_path / "gunicorn.conf.py"
 
+    @property
+    def admin_config_path(self) -> Path:
+        return self.bench.config_path / "admin-gunicorn.conf.py"
+
     def generate_config(self) -> None:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.config_path.write_text(self._render_config())
+
+    def generate_admin_config(self) -> None:
+        """Gunicorn config for the socket-activated admin.
+
+        Bound to a localhost port as a fallback; under systemd socket activation
+        gunicorn inherits the listening socket via LISTEN_FDS and ignores `bind`.
+        Single worker with threads so the in-app idle watchdog and SSE streams
+        share one process. No preload, so create_app runs in the worker (the
+        watchdog needs the arbiter as its parent)."""
+        cfg = self.bench.config.admin
+        self.admin_config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.admin_config_path.write_text(
+            f'bind = "127.0.0.1:{cfg.internal_port}"\n'
+            f"workers = 1\n"
+            f"threads = 8\n"
+            f'worker_class = "gthread"\n'
+            f"timeout = 120\n"
+            f"preload_app = False\n"
+        )
 
     def _render_config(self) -> str:
         cfg = self.bench.config.gunicorn
@@ -45,6 +66,9 @@ class GunicornManager:
             f"timeout = {cfg.timeout}\n"
             f"preload_app = True\n"
         )
+        if cfg.max_requests > 0:
+            base += f"max_requests = {cfg.max_requests}\n"
+            base += f"max_requests_jitter = {cfg.max_requests_jitter}\n"
         if not self.bench.config.production.use_companion_manager:
             return base
         return self._render_companion_config(base)
@@ -104,18 +128,9 @@ class GunicornManager:
         return f'        "{key}": {value}'
 
     def _build_companion_workers(self, sites_dir: Path, logs_dir: Path) -> list[dict]:
-        workers: list[dict] = [
-            self._companion_spec(
-                "scheduler",
-                "frappe.gunicorn_companion:run_scheduler",
-                cwd=sites_dir,
-                stop_timeout=_COMPANION_SCHEDULER_TIMEOUT,
-                logs_dir=logs_dir,
-            )
-        ]
-
-        for group_index, group in enumerate(self.bench.config.workers.groups, start=1):
-            workers.extend(self._worker_group_specs(group_index, group, sites_dir, logs_dir))
+        # A single RQ worker-pool runs all queues; the Frappe scheduler runs as a
+        # thread inside the pool workers, so it needs no companion of its own.
+        workers: list[dict] = [self._worker_pool_spec(sites_dir, logs_dir)]
 
         if self._socketio_companion_enabled():
             workers.append(
@@ -130,30 +145,29 @@ class GunicornManager:
 
         return workers
 
-    def _worker_group_specs(
-        self,
-        group_index: int,
-        group: "WorkerGroup",
-        sites_dir: Path,
-        logs_dir: Path,
-    ) -> list[dict]:
-        queue_names = ",".join(group.queues)
+    def _worker_pool_spec(self, sites_dir: Path, logs_dir: Path) -> dict:
+        groups = self.bench.config.workers.groups
+        queues: list[str] = []
+        for group in groups:
+            for queue in group.queues:
+                if queue not in queues:
+                    queues.append(queue)
+        num_workers = max(1, sum(group.count for group in groups))
         stop_timeout = max(
-            _COMPANION_QUEUE_STOP_TIMEOUT.get(q, _COMPANION_QUEUE_STOP_TIMEOUT["default"])
-            for q in group.queues
+            (_COMPANION_QUEUE_STOP_TIMEOUT.get(q, _COMPANION_QUEUE_STOP_TIMEOUT["default"]) for q in queues),
+            default=_COMPANION_QUEUE_STOP_TIMEOUT["default"],
         )
-        name_slug = "-".join(group.queues)
-        return [
-            self._companion_spec(
-                f"worker-{name_slug}-{i}",
-                "frappe.gunicorn_companion:run_worker",
-                cwd=sites_dir,
-                stop_timeout=stop_timeout,
-                logs_dir=logs_dir,
-                env={"FRAPPE_COMPANION_QUEUE": queue_names},
-            )
-            for i in range(1, group.count + 1)
-        ]
+        return self._companion_spec(
+            "worker-pool",
+            "frappe.gunicorn_companion:run_worker_pool",
+            cwd=sites_dir,
+            stop_timeout=stop_timeout,
+            logs_dir=logs_dir,
+            env={
+                "FRAPPE_COMPANION_QUEUE": ",".join(queues),
+                "FRAPPE_COMPANION_NUM_WORKERS": str(num_workers),
+            },
+        )
 
     def _companion_spec(
         self,

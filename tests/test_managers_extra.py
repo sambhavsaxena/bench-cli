@@ -336,6 +336,57 @@ def test_systemd_generate_config_writes_unit_files(tmp_path: Path) -> None:
     assert (mgr.systemd_conf_dir / "test-bench.target").exists()
 
 
+def test_systemd_admin_socket_listens_on_internal_port(tmp_path: Path) -> None:
+    mgr = _make_systemd_manager(tmp_path)
+    socket_unit = mgr._render_admin_socket()
+    internal = mgr.bench.config.admin.internal_port
+    assert "[Socket]" in socket_unit
+    assert f"ListenStream=127.0.0.1:{internal}" in socket_unit
+    assert "WantedBy=test-bench.target" in socket_unit
+
+
+def test_systemd_admin_service_runs_gunicorn_with_idle_timeout(tmp_path: Path) -> None:
+    mgr = _make_systemd_manager(tmp_path)
+    service = mgr._render_admin_service()
+    assert "admin.backend.wsgi:application" in service
+    assert "Environment=BENCH_ADMIN_IDLE_TIMEOUT=60" in service
+    assert "Requires=test-bench-admin.socket" in service
+    assert "After=test-bench-admin.socket" in service
+    # Re-activation is via the socket, not a systemd restart loop.
+    assert "Restart=no" in service
+
+
+def test_systemd_target_wants_admin_socket_not_service(tmp_path: Path) -> None:
+    from bench_cli.managers.process_manager import ProcessDefinition
+
+    mgr = _make_systemd_manager(tmp_path)
+    defs = [
+        ProcessDefinition("web", "x", tmp_path / "logs" / "web.log"),
+        ProcessDefinition("admin", "x", tmp_path / "logs" / "admin.log"),
+    ]
+    target = mgr._render_target(defs)
+    assert "test-bench-admin.socket" in target
+    assert "test-bench-admin.service" not in target
+    assert "test-bench-web.service" in target
+
+
+def test_systemd_generate_config_writes_admin_socket(tmp_path: Path) -> None:
+    from bench_cli.managers.process_manager import ProcessDefinition
+
+    mgr = _make_systemd_manager(tmp_path)
+    mgr.systemd_conf_dir.mkdir(parents=True, exist_ok=True)
+    fake_defs = [
+        ProcessDefinition("web", "/env/bin/python serve", tmp_path / "logs" / "web.log"),
+        ProcessDefinition("admin", "/env/bin/python -m admin", tmp_path / "logs" / "admin.log"),
+    ]
+    with patch("bench_cli.managers.admin_env_manager.AdminEnvManager"):
+        with patch.object(mgr, "_prod_process_definitions", return_value=fake_defs):
+            mgr.generate_config()
+    assert (mgr.systemd_conf_dir / "test-bench-admin.socket").exists()
+    assert (mgr.systemd_conf_dir / "test-bench-admin.service").exists()
+    assert (mgr.bench.config_path / "admin-gunicorn.conf.py").exists()
+
+
 def test_systemd_is_running_true_when_systemctl_exits_zero(tmp_path: Path) -> None:
     mgr = _make_systemd_manager(tmp_path)
     with patch("subprocess.run") as mock_run:

@@ -37,21 +37,6 @@ git clone https://github.com/frappe/bench-cli ~/bench-cli
 echo 'export PATH="$HOME/bench-cli:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
 
-## Passwordless sudo (optional)
-
-`bench init` can write a sudoers drop-in so that subsequent `apt-get`, `nginx`, `systemctl`, and related calls run without a password prompt:
-
-```bash
-bench init --sudo-password <your-sudo-password>
-```
-
-**The password is never stored.** It is used once to write `/etc/sudoers.d/<user>` via `sudo -S tee`, then immediately discarded. Only the specific commands that bench manages are granted `NOPASSWD` — everything else still requires a password.
-
-The write is idempotent: if the required rules are already in the file, the step is silently skipped.
-
-If the `IS_SUDOERS_SETUP` environment variable is set (e.g. in CI or a managed deployment where the file is pre-provisioned), the password is not requested and the step is skipped entirely.
-
-
 ## Quick start
 
 ```bash
@@ -104,6 +89,8 @@ workers = 4
 threads = 4                          # threads per worker (used by gthread)
 timeout = 120
 malloc_arena_max = 2                 # cap glibc malloc arenas to reduce RSS; 0 = unset
+max_requests = 0                     # recycle the web worker after N requests to release heap; 0 = disabled
+max_requests_jitter = 0              # random +/- spread on max_requests so workers don't all recycle at once
 
 [volume]
 pool = "bench-pool"
@@ -185,6 +172,7 @@ workers = 4
 threads = 4
 timeout = 120
 malloc_arena_max = 2
+max_requests = 0
 
 [letsencrypt]
 email = "ops@example.com"

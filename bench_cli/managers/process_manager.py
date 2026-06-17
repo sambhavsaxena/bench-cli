@@ -17,7 +17,6 @@ from bench_cli.managers.gunicorn_manager import GunicornManager
 if TYPE_CHECKING:
     from bench_cli.core.bench import Bench
 
-
 def _cli_root() -> Path:
     import bench_cli as _pkg
 
@@ -208,8 +207,7 @@ class ProcessManager:
         return pd
 
     def _py_memory_env(self) -> dict:
-        """Caps glibc malloc arenas for the Python procs to keep RSS down.
-        Companions inherit it by forking the gunicorn master."""
+        """Cap glibc malloc arenas for the Python procs to keep idle RSS down."""
         arenas = self.bench.config.gunicorn.malloc_arena_max
         if arenas and arenas > 0:
             return {"MALLOC_ARENA_MAX": str(arenas)}

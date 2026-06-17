@@ -44,6 +44,7 @@ def test_gunicorn_config_defaults() -> None:
     assert cfg.threads == 4
     assert cfg.timeout == 120
     assert cfg.worker_class == "sync"
+    assert cfg.malloc_arena_max == 2
 
 
 def test_gunicorn_default_bind_uses_bench_http_port(tmp_path: Path) -> None:
@@ -116,6 +117,22 @@ def test_gunicorn_manager_generates_config_file(tmp_path: Path) -> None:
     assert 'worker_class = "gthread"' in content
     assert "timeout = 120" in content
     assert "preload_app = True" in content
+
+
+def test_gunicorn_manager_generates_admin_config(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path)
+    bench.config_path.mkdir(parents=True, exist_ok=True)
+
+    GunicornManager(bench).generate_admin_config()
+
+    config_path = bench.config_path / "admin-gunicorn.conf.py"
+    assert config_path.exists()
+    content = config_path.read_text()
+    assert f'bind = "127.0.0.1:{bench.config.admin.internal_port}"' in content
+    assert "workers = 1" in content
+    assert 'worker_class = "gthread"' in content
+    # No preload so create_app (and its idle watchdog) runs in the worker.
+    assert "preload_app = False" in content
 
 
 def test_gunicorn_manager_bind_uses_bench_http_port(tmp_path: Path) -> None:
@@ -277,9 +294,12 @@ def test_gunicorn_config_includes_companion_workers(tmp_path: Path) -> None:
     content = (bench.config_path / "gunicorn.conf.py").read_text()
     assert "companion_control_socket" in content
     assert "companion_workers" in content
-    assert "frappe.gunicorn_companion:run_scheduler" in content
-    assert "frappe.gunicorn_companion:run_worker" in content
+    # A single worker-pool runs all queues with the scheduler embedded as a
+    # thread, so there is no separate scheduler or per-group worker companion.
+    assert "frappe.gunicorn_companion:run_worker_pool" in content
     assert "frappe.gunicorn_companion:run_socketio" in content
+    assert "run_scheduler" not in content
+    assert "FRAPPE_COMPANION_NUM_WORKERS" in content
     assert 'wsgi_app = "frappe.app:application"' in content
     assert "on_starting" in content
     assert "when_ready" in content
@@ -303,6 +323,34 @@ def test_gunicorn_config_uses_explicit_combined_worker_group(tmp_path: Path) -> 
     assert '"FRAPPE_COMPANION_QUEUE": "default,short,long"' in content
     assert '"FRAPPE_COMPANION_QUEUE": "short"' not in content
     assert '"FRAPPE_COMPANION_QUEUE": "long"' not in content
+    # A single group of one worker -> one pool worker.
+    assert '"FRAPPE_COMPANION_NUM_WORKERS": "1"' in content
+
+
+def test_worker_pool_aggregates_groups_into_one_pool(tmp_path: Path) -> None:
+    # Multiple groups collapse into a single pool: deduped queue union and the
+    # summed worker count drive one run_worker_pool companion.
+    config = BenchConfig._from_dict({
+        "bench": {"name": "test-bench", "python": "3.14", "http_port": 8000, "socketio_port": 9000},
+        "apps": [{"name": "frappe", "repo": "https://github.com/frappe/frappe", "branch": "version-16"}],
+        "mariadb": {"root_password": "root"},
+        "redis": {"cache_port": 13000, "queue_port": 11000},
+        "workers": [
+            {"queues": ["default"], "count": 2},
+            {"queues": ["short"], "count": 1},
+            {"queues": ["long", "default"], "count": 1},
+        ],
+        "production": {"process_manager": "supervisor", "use_companion_manager": True},
+    })
+    bench = Bench(config, tmp_path)
+    bench.config_path.mkdir(parents=True, exist_ok=True)
+
+    GunicornManager(bench).generate_config()
+
+    content = (bench.config_path / "gunicorn.conf.py").read_text()
+    assert content.count("run_worker_pool") == 1
+    assert '"FRAPPE_COMPANION_QUEUE": "default,short,long"' in content  # union, order-preserving, deduped
+    assert '"FRAPPE_COMPANION_NUM_WORKERS": "4"' in content  # 2 + 1 + 1
 
 
 def test_gunicorn_config_excludes_companion_without_flag(tmp_path: Path) -> None:
@@ -383,7 +431,7 @@ def test_malloc_arena_max_in_units(tmp_path: Path) -> None:
     from bench_cli.managers.supervisor_process_manager import SupervisorProcessManager
     from bench_cli.managers.systemd_process_manager import SystemdProcessManager
 
-    bench = make_bench(tmp_path, gunicorn=GunicornConfig())  # default 2
+    bench = make_bench(tmp_path, gunicorn=GunicornConfig())  # default arena 2
     systemd = SystemdProcessManager(bench)
     web = next(pd for pd in systemd._prod_process_definitions() if pd.name == "web")
     assert "Environment=MALLOC_ARENA_MAX=2" in systemd._render_unit(web)
@@ -399,3 +447,47 @@ def test_malloc_arena_max_in_units(tmp_path: Path) -> None:
 def test_malloc_arena_max_validation(tmp_path: Path) -> None:
     with pytest.raises(ConfigError):
         make_bench(tmp_path, gunicorn=GunicornConfig(malloc_arena_max=-1)).config.validate()
+
+
+def test_py_memory_env_caps_glibc_arenas(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, GunicornConfig(malloc_arena_max=2))
+    assert ProcessManager(bench)._py_memory_env() == {"MALLOC_ARENA_MAX": "2"}
+
+    bench0 = make_bench(tmp_path, GunicornConfig(malloc_arena_max=0))
+    assert ProcessManager(bench0)._py_memory_env() == {}
+
+
+# ── max_requests worker recycling ───────────────────────────────────────────────
+
+
+def test_max_requests_emitted_when_enabled(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, gunicorn=GunicornConfig(max_requests=2000, max_requests_jitter=200))
+    bench.config_path.mkdir(parents=True, exist_ok=True)
+    GunicornManager(bench).generate_config()
+    content = (bench.config_path / "gunicorn.conf.py").read_text()
+    assert "max_requests = 2000" in content
+    assert "max_requests_jitter = 200" in content
+
+
+def test_max_requests_absent_when_disabled(tmp_path: Path) -> None:
+    bench = make_bench(tmp_path, gunicorn=GunicornConfig(max_requests=0))
+    bench.config_path.mkdir(parents=True, exist_ok=True)
+    GunicornManager(bench).generate_config()
+    content = (bench.config_path / "gunicorn.conf.py").read_text()
+    assert "max_requests" not in content
+
+
+def test_max_requests_validation(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="max_requests"):
+        make_bench(tmp_path, gunicorn=GunicornConfig(max_requests=-1)).config.validate()
+    with pytest.raises(ConfigError, match="max_requests_jitter"):
+        make_bench(tmp_path, gunicorn=GunicornConfig(max_requests_jitter=-1)).config.validate()
+
+
+def test_toml_writer_includes_max_requests(tmp_path: Path) -> None:
+    from bench_cli.config.toml_writer import bench_config_to_toml
+
+    bench = make_bench(tmp_path, GunicornConfig(max_requests=2000, max_requests_jitter=200))
+    toml = bench_config_to_toml(bench.config)
+    assert "max_requests = 2000" in toml
+    assert "max_requests_jitter = 200" in toml

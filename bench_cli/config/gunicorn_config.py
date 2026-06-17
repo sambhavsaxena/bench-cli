@@ -7,4 +7,6 @@ class GunicornConfig:
     threads: int = 4
     timeout: int = 120
     worker_class: str = "sync"
-    malloc_arena_max: int = 2  # MALLOC_ARENA_MAX for Python procs; 0/absent = unset
+    malloc_arena_max: int = 2  # cap glibc malloc arenas; 0 = unset
+    max_requests: int = 0  # recycle web worker after N requests to release heap; 0 = disabled
+    max_requests_jitter: int = 0

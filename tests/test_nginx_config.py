@@ -89,6 +89,45 @@ def test_include_conf_content(tmp_path: Path) -> None:
     assert nginx_dir in content
 
 
+_ADMIN_SYSTEMD_DATA: dict = {
+    **_BASE_DATA,
+    "production": {"process_manager": "systemd", "nginx": True},
+    "admin": {"enabled": True, "port": 8002, "password": "x"},
+}
+
+
+def test_admin_domainless_proxy_under_systemd(tmp_path: Path) -> None:
+    bench = _make_bench(tmp_path, _ADMIN_SYSTEMD_DATA)
+    bench.create_directories()
+    (tmp_path / "sites" / "site1.example.com").mkdir(parents=True)
+    (tmp_path / "sites" / "site1.example.com" / "site_config.json").write_text("{}")
+
+    manager = NginxManager(bench)
+    manager.generate_config(ssl_ready=False)
+
+    admin_conf = tmp_path / "config" / "nginx" / "sites" / "_admin.conf"
+    assert admin_conf.exists()
+    content = admin_conf.read_text()
+    assert "server_name _;" in content
+    assert "listen 8002;" in content
+    # Forwards to the socket-activated gunicorn on the internal port, not admin.port.
+    assert f"proxy_pass         http://127.0.0.1:{bench.config.admin.internal_port};" in content
+
+
+def test_admin_no_domainless_proxy_without_systemd(tmp_path: Path) -> None:
+    data = copy.deepcopy(_ADMIN_SYSTEMD_DATA)
+    data["production"]["process_manager"] = "supervisor"
+    bench = _make_bench(tmp_path, data)
+    bench.create_directories()
+    (tmp_path / "sites" / "site1.example.com").mkdir(parents=True)
+    (tmp_path / "sites" / "site1.example.com" / "site_config.json").write_text("{}")
+
+    manager = NginxManager(bench)
+    manager.generate_config(ssl_ready=False)
+
+    assert not (tmp_path / "config" / "nginx" / "sites" / "_admin.conf").exists()
+
+
 def test_server_name_includes_all_domains(tmp_path: Path) -> None:
     bench = _make_bench(tmp_path, _BASE_DATA)
     manager = NginxManager(bench)

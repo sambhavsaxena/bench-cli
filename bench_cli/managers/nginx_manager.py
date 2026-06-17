@@ -37,10 +37,24 @@ class NginxManager:
             site_ssl_ready = ssl_ready and self.cert_exists(site.config)
             conf_text = self._generate_site_config(site.config, site_ssl_ready)
             (sites_dir / f"{site.config.name}.conf").write_text(conf_text)
+        # Expose the admin via nginx when it has its own domain, or — under
+        # systemd, where it is socket-activated on an internal port — as a
+        # domainless proxy listening on admin.port.
         if self.bench.config.admin.domain:
             conf_text = self._generate_admin_config(ssl_ready)
             (sites_dir / "_admin.conf").write_text(conf_text)
+        elif self._admin_socket_activated():
+            (sites_dir / "_admin.conf").write_text(self._generate_admin_domainless_config())
         self._write_include_conf(nginx_dir)
+
+    def _admin_socket_activated(self) -> bool:
+        return self.bench.config.production.process_manager == "systemd"
+
+    def _admin_proxy_port(self) -> int:
+        """Where the admin actually listens: the socket-activated gunicorn's
+        internal port under systemd, else the Flask process on admin.port."""
+        admin = self.bench.config.admin
+        return admin.internal_port if self._admin_socket_activated() else admin.port
 
     def _write_include_conf(self, nginx_dir: Path) -> None:
         bench_name = self.bench.config.name
@@ -186,6 +200,8 @@ class NginxManager:
             f"        proxy_http_version 1.1;\n"
             f"        proxy_set_header   Upgrade $http_upgrade;\n"
             f'        proxy_set_header   Connection "upgrade";\n'
+            f"        proxy_set_header   X-Frappe-Site-Name $host;\n"
+            f"        proxy_set_header   Origin $scheme://$http_host;\n"
             f"        proxy_set_header   Host $host;\n"
             f"    }}\n\n"
         )
@@ -218,17 +234,7 @@ class NginxManager:
             f"        try_files $uri =404;\n"
             f"    }}\n\n"
         )
-        proxy_block = (
-            f"    location / {{\n"
-            f"        proxy_pass         http://127.0.0.1:{admin.port};\n"
-            f"        proxy_read_timeout 120;\n"
-            f"        proxy_redirect     off;\n"
-            f"        proxy_set_header   Host               $host;\n"
-            f"        proxy_set_header   X-Real-IP          $remote_addr;\n"
-            f"        proxy_set_header   X-Forwarded-For    $proxy_add_x_forwarded_for;\n"
-            f"        proxy_set_header   X-Forwarded-Proto  $scheme;\n"
-            f"    }}\n"
-        )
+        proxy_block = self._render_admin_proxy_location()
 
         if not ssl_ready or not self.admin_cert_exists():
             return (
@@ -266,6 +272,30 @@ class NginxManager:
             f"    server_name {domain};\n\n"
             + ssl_directives
             + proxy_block
+            + f"}}\n"
+        )
+
+    def _render_admin_proxy_location(self) -> str:
+        return (
+            f"    location / {{\n"
+            f"        proxy_pass         http://127.0.0.1:{self._admin_proxy_port()};\n"
+            f"        proxy_read_timeout 120;\n"
+            f"        proxy_redirect     off;\n"
+            f"        proxy_set_header   Host               $host;\n"
+            f"        proxy_set_header   X-Real-IP          $remote_addr;\n"
+            f"        proxy_set_header   X-Forwarded-For    $proxy_add_x_forwarded_for;\n"
+            f"        proxy_set_header   X-Forwarded-Proto  $scheme;\n"
+            f"    }}\n"
+        )
+
+    def _generate_admin_domainless_config(self) -> str:
+        """Plain HTTP proxy on admin.port → socket-activated admin gunicorn.
+        No domain or SSL: nginx just fronts the on-demand admin on its port."""
+        return (
+            f"server {{\n"
+            f"    listen {self.bench.config.admin.port};\n"
+            f"    server_name _;\n\n"
+            + self._render_admin_proxy_location()
             + f"}}\n"
         )
 

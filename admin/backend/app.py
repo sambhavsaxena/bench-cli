@@ -6,6 +6,10 @@ import secrets
 import socket
 import subprocess
 import tomllib
+import secrets
+import signal
+import threading
+import time
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_file, session
@@ -42,12 +46,51 @@ def _wizard_status(bench_root: Path) -> dict:
     return {"wizard": True, "name": name, "enabled": True, "authenticated": True}
 
 
+def _install_idle_watchdog(app: Flask) -> None:
+    """Stop the admin after a period of inactivity when socket-activated.
+
+    Enabled only when BENCH_ADMIN_IDLE_TIMEOUT is set, which the systemd service
+    unit does. Under gunicorn (workers=1, preload_app=False) this runs in the
+    worker, so os.getppid() is the gunicorn arbiter — SIGTERM to it triggers a
+    graceful shutdown and the service stops. systemd keeps the .socket listening,
+    so the next request re-activates the service.
+    """
+    raw = os.environ.get("BENCH_ADMIN_IDLE_TIMEOUT")
+    if not raw:
+        return
+    timeout = int(raw)
+    if timeout <= 0:
+        return
+
+    last_request = time.monotonic()
+    lock = threading.Lock()
+
+    @app.before_request
+    def _touch() -> None:
+        nonlocal last_request
+        with lock:
+            last_request = time.monotonic()
+
+    def _watchdog() -> None:
+        while True:
+            time.sleep(min(timeout, 30))
+            with lock:
+                idle = time.monotonic() - last_request
+            if idle > timeout:
+                os.kill(os.getppid(), signal.SIGTERM)
+                return
+
+    threading.Thread(target=_watchdog, daemon=True).start()
+
+
 def create_app(bench_root: Path) -> Flask:
     app = Flask(__name__, static_folder=str(_STATIC_DIR), static_url_path="/static")
     app.config["BENCH_ROOT"] = bench_root
     app.config["TEMPLATES_AUTO_RELOAD"] = False
     app.secret_key = secrets.token_hex(32)
     app.config["SESSION_COOKIE_NAME"] = f"bench_session_{bench_root.name}"
+
+    _install_idle_watchdog(app)
 
     def _load_config():
         return BenchConfig.from_file(bench_root / "bench.toml")
