@@ -88,8 +88,11 @@ class InitCommand(Command):
 
         production = self.bench.config.production.nginx
         volume_enabled = is_linux() and self.bench.config.volume.enabled
+        dedicated_db = is_linux() and bool(self.bench.config.mariadb.instance)
         # Passwordless sudo is configured by install.sh before init ever runs.
-        self._total_steps = 10 + (3 if production else 0) + (1 if volume_enabled else 0)
+        self._total_steps = (
+            10 + (3 if production else 0) + (1 if volume_enabled else 0) + (1 if dedicated_db else 0)
+        )
 
         self._step("Validate bench.toml")
         self.bench.config.validate()
@@ -100,6 +103,10 @@ class InitCommand(Command):
         if volume_enabled:
             self._step("Set up ZFS volumes")
             self._setup_volume()
+
+        if dedicated_db:
+            self._step("Provision MariaDB instance")
+            self._provision_mariadb_instance()
 
         self._step("Create bench directory structure")
         self.bench.create_directories()
@@ -164,6 +171,14 @@ class InitCommand(Command):
 
         VolumeSetupCommand(self.bench.config.volume, self.bench.path, bench_config=self.bench.config).run()
 
+    def _provision_mariadb_instance(self) -> None:
+        from bench_cli.managers.mariadb_manager import MariaDBManager
+
+        # Runs after _setup_volume: if volume is enabled, the bench's mariadb
+        # dataset is already mounted at the instance datadir, so install-db
+        # writes straight onto ZFS; otherwise the datadir is a plain directory.
+        MariaDBManager(self.bench.config.mariadb).provision_instance(self.bench.config_path)
+
     def _install_system_packages(self) -> None:
         from bench_cli.managers.mariadb_manager import MariaDBManager
         from bench_cli.managers.python_env_manager import PythonEnvManager
@@ -175,16 +190,22 @@ class InitCommand(Command):
             pkg.update()
 
         mariadb_manager = MariaDBManager(self.bench.config.mariadb)
-        freshly_installed = not mariadb_manager.is_installed()
-        mariadb_manager.install()
-        mariadb_manager.start()
-        if freshly_installed:
-            mariadb_manager.secure_installation()
-        elif not mariadb_manager.check_credentials():
-            raise RuntimeError(
-                "MariaDB is already installed but the configured root password is incorrect. "
-                "Fix mariadb.root_password in bench.toml (or secure the existing MariaDB) and retry."
-            )
+        if mariadb_manager.is_dedicated:
+            # Install the package only; the instance is provisioned after volume
+            # setup (see _do_run) so a ZFS-backed datadir, if any, is mounted
+            # before mariadb-install-db runs against it.
+            mariadb_manager.install()
+        else:
+            freshly_installed = not mariadb_manager.is_installed()
+            mariadb_manager.install()
+            mariadb_manager.start()
+            if freshly_installed:
+                mariadb_manager.secure_installation()
+            elif not mariadb_manager.check_credentials():
+                raise RuntimeError(
+                    "MariaDB is already installed but the configured root password is incorrect. "
+                    "Fix mariadb.root_password in bench.toml (or secure the existing MariaDB) and retry."
+                )
         RedisManager(self.bench.config.redis, self.bench).install()
         if is_linux():
             pkg = get_package_manager()

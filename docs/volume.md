@@ -79,6 +79,14 @@ data_dir = "/var/lib/mysql" # path MariaDB reads/writes its data files
                             # bench remounts the dataset here via zfs set mountpoint
 ```
 
+> **Per-bench instances.** When a bench has its own MariaDB instance
+> (`mariadb.instance` set — the `bench new` default on Linux), its `mariadb`
+> dataset mounts at the instance datadir `/var/lib/mysql-<instance>` instead of
+> the shared `/var/lib/mysql`. This is what makes snapshots and rollbacks
+> bench-independent — see
+> [Per-bench MariaDB instances](architecture.md#per-bench-mariadb-instances).
+> Shared-server benches (no `instance`) keep using `/var/lib/mysql` as below.
+
 ### Validation
 
 On every config load:

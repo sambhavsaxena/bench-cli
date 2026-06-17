@@ -35,6 +35,10 @@ def bench_config_to_toml(config: BenchConfig) -> str:
     parts.append(f'socket_path = "{m.socket_path}"')
     if m.version:
         parts.append(f'version = "{m.version}"')
+    if m.instance:
+        parts.append(f'instance = "{m.instance}"')
+    if m.data_dir:
+        parts.append(f'data_dir = "{m.data_dir}"')
     parts.append("")
 
     r = config.redis

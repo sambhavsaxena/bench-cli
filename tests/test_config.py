@@ -183,6 +183,50 @@ def test_invalid_mariadb_version() -> None:
     assert "mariadb.version" in str(exc_info.value)
 
 
+def test_mariadb_instance_defaults_to_shared() -> None:
+    config = load_from_dict(copy.deepcopy(MINIMAL_VALID_DATA))
+    assert config.mariadb.instance == ""
+    assert config.mariadb.data_dir == ""
+
+
+def test_mariadb_instance_and_data_dir_roundtrip() -> None:
+    data = copy.deepcopy(MINIMAL_VALID_DATA)
+    data["mariadb"]["instance"] = "test-bench"
+    data["mariadb"]["data_dir"] = "/var/lib/mysql/test-bench"
+    config = load_from_dict(data)
+    assert config.mariadb.instance == "test-bench"
+    assert config.mariadb.data_dir == "/var/lib/mysql/test-bench"
+    # instance/data_dir survive serialization and only appear when set
+    toml = bench_config_to_toml(config)
+    assert 'instance = "test-bench"' in toml
+    assert 'data_dir = "/var/lib/mysql/test-bench"' in toml
+
+
+def test_mariadb_instance_omitted_from_toml_when_shared() -> None:
+    toml = bench_config_to_toml(load_from_dict(copy.deepcopy(MINIMAL_VALID_DATA)))
+    assert "instance =" not in toml
+    assert "data_dir =" not in toml
+
+
+def test_invalid_mariadb_instance_name() -> None:
+    data = copy.deepcopy(MINIMAL_VALID_DATA)
+    data["mariadb"]["instance"] = "1bad name"
+    config = BenchConfig._from_dict(data)
+    with pytest.raises(ConfigError) as exc_info:
+        config.validate()
+    assert "mariadb.instance" in str(exc_info.value)
+
+
+def test_mariadb_data_dir_must_be_absolute() -> None:
+    data = copy.deepcopy(MINIMAL_VALID_DATA)
+    data["mariadb"]["instance"] = "test-bench"
+    data["mariadb"]["data_dir"] = "relative/path"
+    config = BenchConfig._from_dict(data)
+    with pytest.raises(ConfigError) as exc_info:
+        config.validate()
+    assert "mariadb.data_dir" in str(exc_info.value)
+
+
 def test_invalid_redis_version() -> None:
     data = copy.deepcopy(MINIMAL_VALID_DATA)
     data["redis"]["version"] = "not-a-version"

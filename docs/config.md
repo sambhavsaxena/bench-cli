@@ -26,6 +26,9 @@ host = "localhost"
 port = 3306
 root_password = "root"  # used only during bench init to create databases/users
 # version = "11.8"      # optional — defaults to MariaDB 11.8 LTS (vendor repo on Linux)
+# instance = "my-bench" # optional — when set, this bench runs its own mariadb@<instance>
+# socket_path = "/run/mysqld/mysqld-my-bench.sock"  # per-instance socket (set with instance)
+# data_dir = "/var/lib/mysql-my-bench"             # per-instance datadir (set with instance)
 
 # ── Redis ─────────────────────────────────────────────────────────────────────
 [redis]
@@ -122,8 +125,13 @@ Declares the framework app (frappe) to clone during `bench init`. After init, ad
 |-------|------|----------|---------|-------------|
 | `host` | string | no | `localhost` | MariaDB server host. |
 | `port` | int | no | `3306` | MariaDB server port. |
-| `root_password` | string | yes | — | Root password used to create site databases and users during `bench init`. |
+| `root_password` | string | yes | — | Root password used to create site databases and users during `bench init`. Set on the instance by `secure_installation` during init if not already present. |
 | `version` | string | no | `11.8` | MariaDB version to install (e.g. `"11.8"`, `"11.4"`). On Linux, bench adds MariaDB's official APT repository pinned to this version and installs `mariadb-server` from it; on macOS it selects the `mariadb@<version>` Homebrew formula. Omit to install the default **11.8 LTS** series. |
+| `socket_path` | string | no | — | Unix socket to connect through. For a dedicated instance this is the per-instance socket (e.g. `/run/mysqld/mysqld-<instance>.sock`). |
+| `instance` | string | no | — | **Own instance vs shared MariaDB.** When empty (legacy), the bench uses the shared system MariaDB (`mariadb` service on port 3306). When set, the bench gets its own `mariadb@<instance>` systemd instance (the distro's multi-instance template) with an isolated datadir, socket, and port — its `[mariadbd.<instance>]` option group is written to `/etc/mysql/mariadb.conf.d/99-bench-<instance>.cnf` (read after `50-server.cnf` so the instance's own `pid-file`/`socket`/`port`/`datadir` win). `bench new` sets this to the bench name by default (Linux only; macOS dev benches stay on the shared server); existing benches without it keep using the shared server. |
+| `data_dir` | string | no | `/var/lib/mysql-<instance>` | Data directory for the instance — a **sibling** of `/var/lib/mysql`, never nested inside it (a legacy shared server owns `/var/lib/mysql` as its datadir). Must be an absolute path. When the bench's `[volume]` is enabled, the bench's ZFS `mariadb` dataset is mounted here (set `volume.mariadb.data_dir` to the same path); otherwise it is a plain directory. Ignored in shared mode. |
+
+> **Shared server vs. own instance.** By default every bench talks to one shared MariaDB on `:3306`. Set `instance` (which `bench new` does by default on Linux) to give a bench its **own** server, isolating its data, lifecycle, and — importantly — its ZFS snapshots/rollbacks. See [Per-bench MariaDB instances](architecture.md#per-bench-mariadb-instances) for the rationale and mechanics.
 
 ### `[redis]`
 
@@ -259,7 +267,8 @@ bench validates `bench.toml` before executing any command. Violations produce a 
 7. `nginx.http_port` and `nginx.https_port` must be distinct.
 8. `gunicorn.workers`, `gunicorn.threads`, and `gunicorn.timeout` must be positive integers; `gunicorn.worker_class` must be a non-empty string; `gunicorn.malloc_arena_max`, `gunicorn.max_requests`, and `gunicorn.max_requests_jitter` must be non-negative integers.
 9. `mariadb.version` and `redis.version`, when present, must match `^\d+(\.\d+)*$` (e.g. `"10.6"`, `"7"`, `"7.0"`).
-10. When `volume.enabled = true`: `pool` and `device` must be non-empty; `reservation` and `quota` values must match a valid ZFS size pattern (e.g. `"10G"`, `"500M"`, `"1T"`); quota must be greater than reservation for both datasets.
+10. `mariadb.instance`, when present, must match `^[a-zA-Z][a-zA-Z0-9_-]*$`; `mariadb.data_dir`, when present, must be an absolute path.
+11. When `volume.enabled = true`: `pool` and `device` must be non-empty; `reservation` and `quota` values must match a valid ZFS size pattern (e.g. `"10G"`, `"500M"`, `"1T"`); quota must be greater than reservation for both datasets.
 
 ---
 

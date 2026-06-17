@@ -219,6 +219,7 @@ class BenchConfig:
         self._validate_nginx_ports_distinct()
         self._validate_gunicorn()
         self._validate_mariadb_version()
+        self._validate_mariadb_instance()
         self._validate_redis_version()
         if self.volume.enabled:
             self._validate_volume()
@@ -317,6 +318,16 @@ class BenchConfig:
     def _validate_mariadb_version(self) -> None:
         if self.mariadb.version and not _VERSION_PATTERN.match(self.mariadb.version):
             raise ConfigError(f"mariadb.version '{self.mariadb.version}' is invalid. Must be a version string like '11.8' or '11.4'.")
+
+    def _validate_mariadb_instance(self) -> None:
+        instance = self.mariadb.instance
+        if instance and not _BENCH_NAME_PATTERN.match(instance):
+            raise ConfigError(
+                f"mariadb.instance '{instance}' is invalid. Must start with a letter and contain only "
+                "letters, digits, underscores, or hyphens."
+            )
+        if self.mariadb.data_dir and not Path(self.mariadb.data_dir).is_absolute():
+            raise ConfigError(f"mariadb.data_dir '{self.mariadb.data_dir}' must be an absolute path.")
 
     def _validate_redis_version(self) -> None:
         if self.redis.version and not _VERSION_PATTERN.match(self.redis.version):

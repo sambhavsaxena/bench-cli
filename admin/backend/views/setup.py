@@ -6,7 +6,7 @@ from flask import Blueprint, Response, current_app, jsonify, request, stream_wit
 
 from admin.backend.tasks.manager.task_reader import TaskReader
 from admin.backend.tasks.manager.task_runner import TaskRunner
-from bench_cli.config.bench_toml_builder import FRAMEWORK_BRANCHES, BenchTomlBuilder
+from bench_cli.config.bench_toml_builder import FRAMEWORK_BRANCHES, BenchTomlBuilder, current_port_offset
 
 setup_bp = Blueprint("setup", __name__)
 
@@ -42,7 +42,7 @@ def save_config():
             pass
 
     settings = {**existing, **data, "admin_enabled": True}
-    content = BenchTomlBuilder(_current_name(bench_root), settings).render()
+    content = BenchTomlBuilder(_current_name(bench_root), settings, port_offset=current_port_offset(toml_path)).render()
     toml_path.write_text(content)
     return jsonify({"ok": True})
 
@@ -51,21 +51,47 @@ def save_config():
 def validate_mariadb():
     """Tell the wizard whether the entered root password will work.
 
-    - not installed `secure_installation`function will set this password
+    - not installed `secure_installation` function will set this password
+    - dedicated instance not provisioned yet → init will create + secure it
     - installed+valid everything is fine
     - installed+invalid panic
     """
-    from bench_cli.config.mariadb_config import MariaDBConfig
     from bench_cli.managers.mariadb_manager import MariaDBManager
 
     data = request.get_json(silent=True) or {}
     password = data.get("mariadb_password", "")
-    manager = MariaDBManager(MariaDBConfig(root_password=password))
+
+    # Carry the bench's instance/socket/port so a dedicated bench is validated
+    # against its own instance rather than the shared default.
+    bench_root = Path(current_app.config["BENCH_ROOT"])
+    config = _mariadb_config(bench_root, password)
+    manager = MariaDBManager(config)
+
     if not manager.is_installed():
         return jsonify({"state": "will_install"})
     if manager.check_credentials(password):
         return jsonify({"state": "valid"})
+    # A dedicated instance that isn't running yet will be created + secured by
+    # bench init — don't mistake "not provisioned" for "wrong password".
+    if manager.is_dedicated and not manager.service_is_active():
+        return jsonify({"state": "will_install"})
     return jsonify({"state": "invalid"})
+
+
+def _mariadb_config(bench_root: Path, password: str):
+    """Build a MariaDBConfig from the bench's toml with the entered password applied."""
+    from bench_cli.config.mariadb_config import MariaDBConfig
+
+    config = MariaDBConfig(root_password=password)
+    toml_path = bench_root / "bench.toml"
+    if toml_path.exists():
+        try:
+            settings = BenchTomlBuilder.read_settings(toml_path)
+            config.instance = settings.get("mariadb_instance", "") or ""
+            config.socket_path = settings.get("mariadb_socket_path", "") or ""
+        except Exception:
+            pass
+    return config
 
 
 def _validate(data: dict) -> str | None:

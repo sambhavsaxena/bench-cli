@@ -179,7 +179,12 @@ class MariaDBConfig:
     admin_user: str = 'root'
     socket_path: str = ''
     version: Optional[str] = None   # e.g. "10.6", "11.4"
+    instance: str = ''              # '' = shared server; else this bench's own mariadb@<instance>
+    data_dir: str = ''              # instance datadir; defaults to /var/lib/mysql-<instance>
 ```
+
+When `instance` is set the bench runs its own MariaDB server rather than the
+shared one — see [Per-bench MariaDB instances](#per-bench-mariadb-instances).
 
 ### `RedisConfig`
 
@@ -319,21 +324,95 @@ class MariaDBManager:
 
     def start(self) -> None:
         """
-        Start the MariaDB service.
-        Ubuntu: systemctl start mariadb  (service name is version-independent on Linux)
+        Start the MariaDB service (service_unit(): "mariadb" shared, or
+        "mariadb@<instance>" when the bench owns an instance).
+        Ubuntu: systemctl start <service_unit>
         macOS:  brew services start mariadb[@<version>]  — uses the versioned formula name
                 so the correct service is started when a non-default version is installed.
         """
 
-    def create_database(self, db_name: str) -> None:
-        """CREATE DATABASE IF NOT EXISTS."""
+    def is_dedicated(self) -> bool:
+        """True when config.instance is set (this bench runs its own server)."""
 
-    def create_user(self, username: str, password: str, db_name: str) -> None:
-        """CREATE USER and GRANT ALL on db_name."""
+    def provision_instance(self, staging_dir: Path) -> None:
+        """Linux only. Create/start/secure this bench's own MariaDB instance:
+        stage the [mariadbd.<instance>] option group into mariadb.conf.d/, create
+        the mysql-owned datadir, then `systemctl enable --now mariadb@<instance>`
+        (the packaged template runs mariadb-install-db), and set the root
+        password. See Per-bench MariaDB instances below.
+        """
 
     def _connect(self) -> 'MySQLConnection':
-        """Return an authenticated root connection."""
+        """Return an authenticated root connection (via the instance socket/port
+        when dedicated, otherwise the shared server)."""
 ```
+
+---
+
+## Per-bench MariaDB instances
+
+By default a bench uses the **shared system MariaDB** — one server on `:3306`
+that every bench and site connects to. This is the legacy behaviour and remains
+the default for any bench whose `bench.toml` does not set `mariadb.instance`.
+
+`bench new` (on Linux) instead provisions each new bench its **own** MariaDB
+server: `mariadb.instance = <bench-name>`, run as the systemd template unit
+`mariadb@<instance>`, with its own datadir, socket, and TCP port.
+
+### Why a server per bench, not just a database per bench
+
+The shared server already gives each *site* its own database and user, so the
+motivation is isolation at the **server** level:
+
+- **Independent snapshots & rollback.** ZFS snapshots and rollbacks operate on a
+  bench's own datadir. With one shared datadir under `/var/lib/mysql`, rolling
+  one bench's database back to a snapshot would roll back *every* bench's data.
+  A datadir per instance (`/var/lib/mysql-<instance>`) makes snapshot/restore
+  truly per-bench — the reason the datadir is a sibling path, never nested.
+- **Blast-radius containment.** A runaway query, a crash, a corrupted table, or a
+  `DROP`/restore in one bench cannot affect another. Resource limits
+  (buffer pool, connections) are per server.
+- **Independent lifecycle & config.** Each bench can run a different server
+  config, be started/stopped/upgraded on its own, and be torn down by simply
+  removing its instance — without coordinating with other tenants of a shared
+  server.
+- **Parity with production multitenancy.** Each bench is a self-contained unit
+  (apps, sites, redis, processes — and now its database), which matches how
+  benches are otherwise isolated on disk and in the process manager.
+
+The trade-off is higher memory use (each server has its own InnoDB buffer pool),
+so the shared mode stays fully supported for small or single-bench hosts.
+
+### How it works (Linux)
+
+1. **Config group.** `_write_instance_config` writes
+   `[mariadbd.<instance>]` (datadir, socket, port, pid-file, bind-address) to
+   `/etc/mysql/mariadb.conf.d/99-bench-<instance>.cnf`. The packaged
+   `mariadb@.service` starts `mariadbd --defaults-group-suffix=.<instance>`, so
+   only that instance reads this group; the shared server ignores it. The
+   `99-` prefix / `mariadb.conf.d/` location matters: that directory is included
+   **after** `conf.d/` and after `50-server.cnf`, whose base `[mariadbd]` sets a
+   `pid-file`. Read any earlier, the instance's `pid-file` would be silently
+   overridden back to the shared default and collide.
+2. **Datadir.** A mysql-owned datadir is created at `/var/lib/mysql-<instance>`
+   (a sibling of `/var/lib/mysql`, never nested — see above). When the bench's
+   `[volume]` is enabled, its ZFS `mariadb` dataset is mounted here first, so
+   the database lives on ZFS; otherwise it is a plain directory.
+3. **Start & secure.** `systemctl enable --now mariadb@<instance>` starts the
+   server (its `ExecStartPre` runs `mariadb-install-db` to initialise the
+   datadir), then the root password from `bench.toml` is set the same way a
+   fresh shared install is secured.
+
+During `bench init` the instance is provisioned **after** volume setup so a
+ZFS-backed datadir is mounted before initialisation; sites then connect to the
+instance over its socket, and the admin UI over its port.
+
+### Platform support
+
+Per-bench instances are **Linux only** — they rely on systemd template units.
+On macOS (a development-only platform with no systemd) `bench new` leaves
+`mariadb.instance` empty, so macOS benches use the shared Homebrew MariaDB;
+per-site database isolation still applies.
 
 ### `RedisManager`
 

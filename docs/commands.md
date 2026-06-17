@@ -11,7 +11,7 @@ Scaffolds a starter `bench.toml` inside a new bench directory.
 **Steps:**
 1. Check that `benches/<name>/` does not already exist. If it does, print an error and exit.
 2. Create `benches/<name>/`.
-3. Write a minimal `bench.toml` with placeholder values to `benches/<name>/bench.toml`.
+3. Write a minimal `bench.toml` with placeholder values to `benches/<name>/bench.toml`. Ports are auto-offset so the bench doesn't collide with existing ones. On Linux the bench is also given its **own** MariaDB instance (`mariadb.instance = <name>`, plus a per-instance socket/datadir) — see [Per-bench MariaDB instances](architecture.md#per-bench-mariadb-instances). On macOS it stays on the shared Homebrew MariaDB.
 4. Print a message telling the user to edit the file and then run `bench init`.
 
 **Does not** touch the filesystem beyond creating the directory and writing `bench.toml`.
@@ -96,9 +96,9 @@ If the `IS_SUDOERS_SETUP` environment variable is set, `bench init` assumes the 
 
 `libmysqlclient-dev` is **not** needed on either platform — bench uses `PyMySQL`, which is pure Python and requires no C extension.
 
-After installation, `MariaDBManager.start()` ensures the MariaDB service is running:
-- Ubuntu: `systemctl start mariadb`
-- macOS: `brew services start mariadb`
+After installation, MariaDB is started:
+- **Shared server** (no `mariadb.instance`): `MariaDBManager.start()` runs `systemctl start mariadb` (Ubuntu) / `brew services start mariadb` (macOS), then sets the root password if the install is fresh.
+- **Own instance** (`mariadb.instance` set, Linux): `MariaDBManager.provision_instance()` stages the `[mariadbd.<instance>]` config, creates the datadir, runs `systemctl enable --now mariadb@<instance>`, and secures it. This runs **after** ZFS volume setup so a volume-backed datadir is mounted first. See [Per-bench MariaDB instances](architecture.md#per-bench-mariadb-instances).
 
 #### Step 3 — Create bench directory structure
 

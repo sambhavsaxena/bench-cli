@@ -47,7 +47,7 @@ def detail(name: str):
     try:
         bench_config = BenchConfig.from_file(bench_root / "bench.toml")
         http_port = bench_config.http_port
-        nginx_enabled = bench_config.nginx.enabled
+        nginx_enabled = bench_config.production.nginx
     except Exception:
         http_port = 8000
         nginx_enabled = False

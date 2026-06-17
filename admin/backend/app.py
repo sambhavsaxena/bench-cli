@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
+import socket
+import subprocess
+import tomllib
 import signal
 import threading
 import time
@@ -21,15 +25,17 @@ from .views.sites import sites_bp
 from .views.tasks import tasks_bp
 from .views.updates import updates_bp
 from .views.volume import volume_bp
+from bench_cli.commands.admin import _cli_root
+from bench_cli.commands.new import NewCommand
 from bench_cli.config.bench_config import BenchConfig
-from bench_cli.exceptions import ConfigError
+from bench_cli.exceptions import BenchError, ConfigError
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _OPEN_PATHS = {"/api/status", "/api/login", "/api/logout"}
+_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 def _wizard_status(bench_root: Path) -> dict:
-    import tomllib
     name = bench_root.name
     try:
         with open(bench_root / "bench.toml", "rb") as f:
@@ -81,6 +87,7 @@ def create_app(bench_root: Path) -> Flask:
     app.config["BENCH_ROOT"] = bench_root
     app.config["TEMPLATES_AUTO_RELOAD"] = False
     app.secret_key = secrets.token_hex(32)
+    app.config["SESSION_COOKIE_NAME"] = f"bench_session_{bench_root.name}"
 
     _install_idle_watchdog(app)
 
@@ -118,8 +125,6 @@ def create_app(bench_root: Path) -> Flask:
             config = BenchConfig.from_file(bench_root / "bench.toml")
         except Exception as exc:
             return jsonify({"enabled": False, "error": str(exc)}), 503
-        # Show wizard when bench was never initialized, or when init was
-        # interrupted before an admin password was saved.
         if not initialized or not config.admin.password:
             return jsonify(_wizard_status(bench_root))
         return jsonify(
@@ -148,6 +153,91 @@ def create_app(bench_root: Path) -> Flask:
     def api_logout():
         session.clear()
         return jsonify({"ok": True})
+
+    @app.route("/api/benches/")
+    def api_benches():
+        benches_dir = bench_root.parent
+        running = []
+        for bench_dir in sorted(benches_dir.iterdir()):
+            if not bench_dir.is_dir():
+                continue
+            toml_path = bench_dir / "bench.toml"
+            if not toml_path.exists():
+                continue
+            try:
+                with open(toml_path, "rb") as f:
+                    config = tomllib.load(f)
+                port = config.get("admin", {}).get("port")
+                name = config.get("bench", {}).get("name", bench_dir.name)
+                if not port:
+                    continue
+                with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                    pass
+                running.append({"name": name, "port": port})
+            except Exception:
+                continue
+        return jsonify(running)
+
+    @app.route("/api/benches/new", methods=["POST"])
+    def api_benches_new():
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip()
+        if not name or not _NAME_RE.match(name):
+            return jsonify({"error": "Bench name must contain only letters, numbers, '-' and '_'"}), 400
+
+        new_dir = bench_root.parent / name
+        try:
+            NewCommand(new_dir, name).run()
+        except BenchError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        with open(new_dir / "bench.toml", "rb") as f:
+            new_port = tomllib.load(f)["admin"]["port"]
+
+        cli_root = _cli_root()
+        admin_python = cli_root / ".admin-venv" / "bin" / "python"
+        # Strip WERKZEUG_* — if this request is being handled by a dev-mode
+        # (--dev) admin server, its env carries WERKZEUG_SERVER_FD/RUN_MAIN
+        # from its own reloader. Inheriting those into the new bench's admin
+        # process makes Werkzeug try to reuse a stale fd as an already-bound
+        # socket, which crashes it on startup with no visible error.
+        # Since this is just spawining the setup server we can ignore the phantom
+        # process runner it will be killed once the setup is completed anyways.
+        spawn_env = {k: v for k, v in os.environ.items() if not k.startswith("WERKZEUG_")}
+        spawn_env["PYTHONPATH"] = str(cli_root)
+        subprocess.Popen(
+            [
+                str(admin_python),
+                "-m",
+                "admin.backend.server",
+                "--bench-root",
+                str(new_dir),
+                "--port",
+                str(new_port),
+                "--timeout",
+                "7200",
+                "--wizard",
+            ],
+            cwd=str(cli_root),
+            env=spawn_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return jsonify({"name": name, "port": new_port})
+
+    @app.route("/api/benches/ready")
+    def api_benches_ready():
+        try:
+            port = int(request.args.get("port", ""))
+        except ValueError:
+            return jsonify({"ready": False}), 400
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                pass
+            return jsonify({"ready": True})
+        except OSError:
+            return jsonify({"ready": False})
 
     app.register_blueprint(setup_bp, url_prefix="/api/setup")
     app.register_blueprint(dashboard_bp, url_prefix="/api")

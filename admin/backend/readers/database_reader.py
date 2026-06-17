@@ -55,6 +55,7 @@ class DatabaseReader:
             port=self._config.port,
             user="root",
             password=self._config.root_password,
+            unix_socket=self._config.socket_path or None,
             cursorclass=pymysql.cursors.DictCursor,
         )
 

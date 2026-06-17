@@ -1,9 +1,40 @@
 import io
 import shutil
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from bench_cli.exceptions import BenchError, CommandError
+
+if TYPE_CHECKING:
+    from bench_cli.core.bench import BenchConfig
+
+
+def iter_sibling_benches(bench_path: Path) -> Iterator[tuple[Path, "BenchConfig"]]:
+    """Yield ``(bench_dir, parsed bench.toml)`` for every *other* bench that
+    shares this bench's parent ``benches/`` directory.
+
+    Parse-only (no validation) so half-configured benches are still seen.
+    Skips ``bench_path`` itself and any directory without a readable
+    ``bench.toml``. ``bench_path`` need not exist yet (e.g. during ``bench new``).
+    """
+    from bench_cli.core.bench import BenchConfig
+
+    parent = bench_path.parent
+    if not parent.is_dir():
+        return
+    me = bench_path.resolve()
+    for sibling in parent.iterdir():
+        if not sibling.is_dir() or sibling.resolve() == me:
+            continue
+        toml_path = sibling / "bench.toml"
+        if not toml_path.exists():
+            continue
+        try:
+            yield sibling, BenchConfig.from_file(toml_path)
+        except Exception:
+            continue
 
 
 def write_toml(path: Path, data: dict) -> None:
@@ -20,11 +51,9 @@ def write_toml(path: Path, data: dict) -> None:
         return str(v)
 
     def _write_section(obj: dict, prefix: str = "") -> None:
-        scalars = {k: v for k, v in obj.items() if not isinstance(v, (dict, list)) or
-                   (isinstance(v, list) and not any(isinstance(i, dict) for i in v))}
+        scalars = {k: v for k, v in obj.items() if not isinstance(v, (dict, list)) or (isinstance(v, list) and not any(isinstance(i, dict) for i in v))}
         dicts = {k: v for k, v in obj.items() if isinstance(v, dict)}
-        array_of_tables = {k: v for k, v in obj.items()
-                           if isinstance(v, list) and any(isinstance(i, dict) for i in v)}
+        array_of_tables = {k: v for k, v in obj.items() if isinstance(v, list) and any(isinstance(i, dict) for i in v)}
 
         for k, v in scalars.items():
             out.write(f"{k} = {_write_value(v)}\n")

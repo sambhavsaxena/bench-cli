@@ -87,11 +87,29 @@ def test_discovery_does_not_import_heavy_layers() -> None:
     every command added. Run in a clean interpreter so other tests' imports don't
     pollute sys.modules.
     """
-    code = (
-        "import sys, bench_cli.registry as r; r._discover();"
-        "print('\\n'.join(m for m in sys.modules"
-        " if m.startswith(('bench_cli.managers', 'bench_cli.core', 'bench_cli.config'))))"
-    )
+    # Patch __import__ to record the bench_cli call-site responsible for each
+    # heavy import: (leaked_module, importer_file, importer_line).
+    code = """
+import builtins, sys, traceback
+_orig = builtins.__import__
+_leaks = []
+_HEAVY = ('bench_cli.managers', 'bench_cli.core', 'bench_cli.config')
+
+def _tracing_import(name, *args, **kwargs):
+    already_loaded = name in sys.modules
+    result = _orig(name, *args, **kwargs)
+    if name.startswith(_HEAVY) and not already_loaded:
+        frames = [f for f in traceback.extract_stack()[:-1] if 'bench_cli' in (f.filename or '')]
+        if frames:
+            f = frames[-1]
+            _leaks.append(f"{name}  <-  {f.filename}:{f.lineno}")
+    return result
+
+builtins.__import__ = _tracing_import
+import bench_cli.registry as r; r._discover()
+builtins.__import__ = _orig
+print('\\n'.join(_leaks))
+"""
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     leaked = result.stdout.strip()

@@ -17,8 +17,11 @@ FLAT_KEYS = {
     "python": "python_version",
     "socketio_backend": "socketio_backend",
     "mariadb_password": "mariadb.root_password",
+    "mariadb_instance": "mariadb.instance",
+    "mariadb_socket_path": "mariadb.socket_path",
+    "mariadb_data_dir": "mariadb.data_dir",
+    "mariadb_port": "mariadb.port",
     "admin_enabled": "admin.enabled",
-    "admin_port": "admin.port",
     "admin_password": "admin.password",
     "volume_enabled": "volume.enabled",
     "volume_pool": "volume.pool",
@@ -48,6 +51,39 @@ def _default_config(name: str = "") -> BenchConfig:
     data = copy.deepcopy(_DEFAULT_DATA)
     data["bench"]["name"] = name
     return BenchConfig._from_dict(data)
+
+
+# Ports are managed internally (new benches get an auto-picked offset so they
+# don't collide) rather than via FLAT_KEYS, so they stay out of the wizard
+# and settings UIs. This is the single place that knows their default values
+# and dotted paths — callers needing them (e.g. NewCommand's port offset
+# logic) should go through default_ports()/BenchTomlBuilder, not duplicate
+# the numbers themselves.
+_PORT_FIELDS = ("http_port", "socketio_port", "redis.cache_port", "redis.queue_port", "admin.port", "mariadb.port")
+
+
+def default_ports() -> dict[str, int]:
+    """Default value for every port field, keyed by its dotted BenchConfig path."""
+    config = _default_config()
+    return {field: _get_path(config, field) for field in _PORT_FIELDS}
+
+
+def current_port_offset(toml_path: Path) -> int:
+    """Offset already baked into an existing bench.toml, derived from its http_port.
+
+    Since ports aren't in FLAT_KEYS, any code that rewrites an existing
+    bench.toml via BenchTomlBuilder (e.g. the setup wizard's save step) must
+    pass this back in as port_offset, or every other port field silently
+    resets to default on the next save.
+    """
+    if not toml_path.exists():
+        return 0
+    try:
+        with open(toml_path, "rb") as f:
+            data = tomllib.load(f)
+        return data.get("bench", {}).get("http_port", default_ports()["http_port"]) - default_ports()["http_port"]
+    except Exception:
+        return 0
 
 
 def _get_path(config: BenchConfig, path: str):
@@ -123,14 +159,18 @@ class BenchTomlBuilder:
     DEFAULTS = {key: value for key, value in _flatten(_default_config()).items() if key != "bench_name"}
     DEFAULTS["volume_image_size"] = DEFAULTS["volume_image_size"] or "60G"
 
-    def __init__(self, name: str, settings: dict | None = None) -> None:
+    def __init__(self, name: str, settings: dict | None = None, port_offset: int = 0) -> None:
         self._name = name
         self._settings = settings or {}
+        self._port_offset = port_offset
 
     def render(self) -> str:
         config = _default_config(self._name)
         for key, value in self._settings.items():
             _apply_setting(config, key, value)
+        if self._port_offset:
+            for field in _PORT_FIELDS:
+                _set_path(config, field, _get_path(config, field) + self._port_offset)
         if self._name:
             config.name = self._name
         return bench_config_to_toml(config)
