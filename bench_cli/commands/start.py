@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import tomllib
@@ -15,8 +16,22 @@ class RunCommand(Command):
     name = "start"
     help = "Start all bench processes."
 
-    def __init__(self, bench: "Bench") -> None:
+    @classmethod
+    def add_arguments(cls, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--admin-dev",
+            action="store_true",
+            help="Develop the admin UI: live-rebuild it and run the Vite dev server. "
+                 "By default the admin backend just serves the prebuilt UI from dist.",
+        )
+
+    @classmethod
+    def from_args(cls, args, bench):
+        return cls(bench, admin_dev=args.admin_dev)
+
+    def __init__(self, bench: "Bench", admin_dev: bool = False) -> None:
         self.bench = bench
+        self.admin_dev = admin_dev
 
     def run(self) -> None:
         from bench_cli.managers.process_manager import ProcessManager
@@ -35,7 +50,10 @@ class RunCommand(Command):
             if not initialized:
                 self._start_wizard()
                 return
-            ProcessManager(self.bench).start()
+            # In --admin-dev the Vite watcher rebuilds dist itself.
+            if not self.admin_dev:
+                self._ensure_admin_dist()
+            ProcessManager(self.bench, admin_dev=self.admin_dev).start()
             return
 
         # Production bench (systemd/supervisor): the admin always runs under the
@@ -64,6 +82,19 @@ class RunCommand(Command):
             print(_incomplete_message(self.bench))
             return
         manager.start()
+
+    def _ensure_admin_dist(self) -> None:
+        # Build the admin UI from source if present, else download a prebuilt copy.
+        from bench_cli.commands.admin import BuildAdminCommand, _cli_root, download_admin_frontend
+
+        cli_root = _cli_root()
+        if (cli_root / "admin" / "backend" / "static" / "dist" / "assets").exists():
+            return
+        print("Admin UI not built yet; building it now...")
+        if (cli_root / "admin" / "frontend" / "package.json").exists():
+            BuildAdminCommand(force_build=True).run()
+        else:
+            download_admin_frontend(cli_root)
 
     def _start_wizard(self) -> None:
         from bench_cli.commands.admin import download_admin_frontend, _cli_root

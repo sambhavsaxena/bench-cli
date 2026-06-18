@@ -64,8 +64,11 @@ class ProcessDefinition:
 
 
 class ProcessManager:
-    def __init__(self, bench: "Bench") -> None:
+    def __init__(self, bench: "Bench", admin_dev: bool = False) -> None:
         self.bench = bench
+        # Off: admin backend serves the prebuilt UI from dist. On: also live-rebuild
+        # the UI and run the Vite dev server (for developing the admin frontend).
+        self.admin_dev = admin_dev
         self._procs: dict[str, subprocess.Popen] = {}
         self._stopping = False
 
@@ -253,12 +256,13 @@ class ProcessManager:
 
     def _process_definitions(self) -> List[ProcessDefinition]:
         defs = [self._to_dev(pd) for pd in self._prod_process_definitions()]
-        defs.append(self._admin_frontend_dev_definition())
+        if self.admin_dev:
+            defs.append(self._admin_frontend_dev_definition())
         return defs
 
     def _to_dev(self, pd: ProcessDefinition) -> ProcessDefinition:
         """Map a production process definition to its dev-mode variant."""
-        if pd.name == "admin":
+        if pd.name == "admin" and self.admin_dev:
             return self._admin_dev_definition()
         if pd.name == "web":
             return self._web_definition(dev=True)
