@@ -471,9 +471,9 @@ function backToConfig() {
             label="Production process manager"
             v-model="form.production_process_manager"
             :options="[
-              { label: 'None — development mode (bench start)', value: 'none' },
-              { label: 'Supervisor — bench-owned supervisord, no root needed', value: 'supervisor' },
-              { label: 'Systemd — systemctl --user units', value: 'systemd' },
+              { label: 'Development — run it yourself', value: 'none' },
+              { label: 'Systemd — recommended', value: 'systemd' },
+              { label: 'Supervisor — alternative', value: 'supervisor' },
             ]"
           />
           <div v-if="form.production_process_manager !== 'none'">

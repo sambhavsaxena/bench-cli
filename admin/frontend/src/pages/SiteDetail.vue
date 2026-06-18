@@ -780,7 +780,7 @@ onMounted(() => { load(); loadRegistry() })
                   <p class="text-sm font-medium text-ink-gray-8">Enable SSL</p>
                   <p class="mt-0.5 text-sm text-ink-gray-5">
                     <template v-if="site.ssl">A Let's Encrypt certificate is already active for this site.</template>
-                    <template v-else-if="!nginxEnabled">Requires nginx to be enabled for this bench.</template>
+                    <template v-else-if="!nginxEnabled">Available once this bench is live (deployed to production).</template>
                     <template v-else>Issue a Let's Encrypt certificate and serve this site over HTTPS.</template>
                   </p>
                 </div>

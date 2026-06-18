@@ -242,7 +242,7 @@ onMounted(load)
         <h3 class="font-semibold text-ink-gray-8">Setup</h3>
         <ErrorMessage :message="taskError" />
         <div class="flex flex-wrap gap-2">
-          <Button variant="outline" :loading="taskLoading === 'setup-nginx'" @click="taskLoading = 'setup-nginx'; runTask('setup-nginx')">Setup Nginx</Button>
+          <Button variant="outline" :loading="taskLoading === 'setup-nginx'" @click="taskLoading = 'setup-nginx'; runTask('setup-nginx')">Refresh Web Routing</Button>
           <Button variant="outline" :loading="taskLoading === 'setup-production'" @click="taskLoading = 'setup-production'; runTask('setup-production')">Setup Production</Button>
           <Button variant="outline" :loading="taskLoading === 'update'" @click="taskLoading = 'update'; runTask('update')">Update Bench</Button>
         </div>

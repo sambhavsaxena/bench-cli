@@ -76,14 +76,12 @@ const newBenchCreating = ref(false)
 const newBenchStatus = ref('')
 
 const processManagerOptions = [
-  { value: 'systemd', label: 'Systemd', hint: 'systemctl --user' },
-  { value: 'supervisor', label: 'Supervisor', hint: 'bench-owned' },
+  { value: 'systemd', label: 'Systemd', hint: 'Recommended' },
+  { value: 'supervisor', label: 'Supervisor', hint: 'Alternative' },
 ]
 
 function benchMode(bench) {
-  if (!bench.production) return 'Development'
-  const pm = bench.process_manager
-  return pm ? `Production · ${pm.charAt(0).toUpperCase()}${pm.slice(1)}` : 'Production'
+  return bench.production ? 'Live' : 'Development'
 }
 
 function openNewBenchDialog() {
@@ -308,7 +306,7 @@ onUnmounted(() => clearInterval(pollTimer))
               @keyup.enter="createBench"
             />
             <p class="mt-1.5 text-xs text-ink-gray-5">
-              Where the admin is reached in production (nginx-fronted).
+              The web address you'll use to open this bench.
             </p>
           </div>
           <ErrorMessage v-if="newBenchError" :message="newBenchError" />
