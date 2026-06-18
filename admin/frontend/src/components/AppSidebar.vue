@@ -76,9 +76,15 @@ const newBenchCreating = ref(false)
 const newBenchStatus = ref('')
 
 const processManagerOptions = [
-  { label: 'Systemd — systemctl --user units', value: 'systemd' },
-  { label: 'Supervisor — bench-owned supervisord', value: 'supervisor' },
+  { value: 'systemd', label: 'Systemd', hint: 'systemctl --user' },
+  { value: 'supervisor', label: 'Supervisor', hint: 'bench-owned' },
 ]
+
+function benchMode(bench) {
+  if (!bench.production) return 'Development'
+  const pm = bench.process_manager
+  return pm ? `Production · ${pm.charAt(0).toUpperCase()}${pm.slice(1)}` : 'Production'
+}
 
 function openNewBenchDialog() {
   newBenchName.value = ''
@@ -238,21 +244,26 @@ onUnmounted(() => clearInterval(pollTimer))
 
     <Dialog v-model="showBenchDialog" title="Change Bench" size="sm" :showCloseButton="true">
       <template #default>
-        <div v-if="benches.length === 0" class="text-sm text-ink-gray-5 py-2">
+        <div v-if="benches.length === 0" class="rounded-lg bg-surface-gray-1 px-3 py-6 text-center text-sm text-ink-gray-5">
           No other benches running.
         </div>
         <div v-else class="flex flex-col gap-1">
           <button
             v-for="bench in benches"
             :key="bench.port"
-            class="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors w-full text-left"
+            class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors w-full"
             :class="isCurrentBench(bench)
-              ? 'bg-surface-gray-2 text-ink-gray-9 font-medium cursor-default'
-              : 'text-ink-gray-7 hover:bg-surface-gray-2 cursor-pointer'"
+              ? 'bg-surface-gray-2 cursor-default'
+              : 'hover:bg-surface-gray-2 cursor-pointer'"
             @click="switchBench(bench)"
           >
-            <span>{{ bench.name }}</span>
-            <LucideCheck v-if="isCurrentBench(bench)" class="h-4 w-4 text-ink-green-3" />
+            <span class="h-2 w-2 flex-shrink-0 rounded-full bg-ink-green-3" />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-medium text-ink-gray-9">{{ bench.name }}</span>
+              <span class="block truncate text-xs text-ink-gray-5">{{ benchMode(bench) }}</span>
+            </span>
+            <span v-if="isCurrentBench(bench)" class="flex-shrink-0 text-xs font-medium text-ink-gray-5">Current</span>
+            <LucideCheck v-if="isCurrentBench(bench)" class="h-4 w-4 flex-shrink-0 text-ink-green-3" />
           </button>
         </div>
       </template>
@@ -260,7 +271,7 @@ onUnmounted(() => clearInterval(pollTimer))
 
     <Dialog v-model="showNewBenchDialog" title="New Bench" size="sm" :showCloseButton="true">
       <template #default>
-        <div class="flex flex-col gap-4">
+        <div class="flex flex-col gap-5">
           <FormControl
             label="Bench name"
             type="text"
@@ -269,12 +280,24 @@ onUnmounted(() => clearInterval(pollTimer))
             @input="newBenchError = ''"
             @keyup.enter="createBench"
           />
-          <FormControl
-            label="Process manager"
-            type="select"
-            v-model="newBenchProcessManager"
-            :options="processManagerOptions"
-          />
+          <div>
+            <span class="mb-1.5 block text-xs text-ink-gray-5">Process manager</span>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                v-for="opt in processManagerOptions"
+                :key="opt.value"
+                type="button"
+                class="rounded-lg border px-3 py-2 text-left transition-colors"
+                :class="newBenchProcessManager === opt.value
+                  ? 'border-outline-gray-3 bg-surface-gray-2'
+                  : 'border-outline-gray-2 hover:bg-surface-gray-1'"
+                @click="newBenchProcessManager = opt.value"
+              >
+                <span class="block text-sm font-medium text-ink-gray-9">{{ opt.label }}</span>
+                <span class="block text-xs text-ink-gray-5">{{ opt.hint }}</span>
+              </button>
+            </div>
+          </div>
           <div>
             <FormControl
               label="Admin domain"
@@ -285,7 +308,7 @@ onUnmounted(() => clearInterval(pollTimer))
               @keyup.enter="createBench"
             />
             <p class="mt-1.5 text-xs text-ink-gray-5">
-              The bench's admin is reached at this domain in production (nginx-fronted).
+              Where the admin is reached in production (nginx-fronted).
             </p>
           </div>
           <ErrorMessage v-if="newBenchError" :message="newBenchError" />
