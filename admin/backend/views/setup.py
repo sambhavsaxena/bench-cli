@@ -113,8 +113,15 @@ def _validate(data: dict) -> str | None:
 def start_init():
     from bench_cli.config.bench_config import BenchConfig
     from bench_cli.managers.volume_manager import VolumeManager
+    from bench_cli.platform import has_passwordless_sudo, is_linux
 
     bench_root = Path(current_app.config["BENCH_ROOT"])
+
+    # The wizard runs init as a no-TTY task; without passwordless sudo it would
+    # hang on a hidden password prompt. Surface a clean error instead.
+    if is_linux() and not has_passwordless_sudo():
+        return jsonify({"ok": False, "error": "Passwordless sudo is not configured. "
+                        "Run install.sh (or add /etc/sudoers.d/<user> NOPASSWD) and retry."}), 400
 
     # Pre-flight validation so volume sizing errors surface in the wizard
     # instead of failing deep inside the init task.

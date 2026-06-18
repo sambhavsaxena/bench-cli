@@ -86,10 +86,13 @@ class InitCommand(Command):
         from bench_cli.managers.redis_manager import RedisManager
         from bench_cli.platform import is_linux
 
+        self._check_passwordless_sudo()
+
         production = self.bench.config.production.nginx
         volume_enabled = is_linux() and self.bench.config.volume.enabled
         dedicated_db = is_linux() and bool(self.bench.config.mariadb.instance)
-        # Passwordless sudo is configured by install.sh before init ever runs.
+        # Passwordless sudo is set up by install.sh and enforced above by
+        # _check_passwordless_sudo, so the steps below never block on a prompt.
         self._total_steps = (
             10 + (3 if production else 0) + (1 if volume_enabled else 0) + (1 if dedicated_db else 0)
         )
@@ -154,6 +157,19 @@ class InitCommand(Command):
         print("\nBench initialised. Next steps:")
         print("  bench new-site site1.example.com   # create your first site")
         print("  bench start                        # start all processes")
+
+    def _check_passwordless_sudo(self) -> None:
+        from bench_cli.platform import has_passwordless_sudo, is_linux
+
+        if not is_linux() or has_passwordless_sudo():
+            return
+        raise RuntimeError(
+            "Passwordless sudo is not configured for this user. bench init needs it to "
+            "install packages and manage services without a password prompt.\n"
+            "Set it up by re-running the installer:\n"
+            "  curl -fsSL https://raw.githubusercontent.com/frappe/bench-cli/main/install.sh | bash\n"
+            "or add /etc/sudoers.d/<user> containing: <user> ALL=(ALL) NOPASSWD: ALL"
+        )
 
     def _step(self, description: str) -> None:
         self._step_counter += 1

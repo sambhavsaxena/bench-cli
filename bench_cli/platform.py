@@ -23,6 +23,11 @@ def is_linux() -> bool:
     return detect() == Platform.LINUX
 
 
+def has_passwordless_sudo() -> bool:
+    """True if sudo runs without prompting for a password (non-interactive)."""
+    return subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0
+
+
 class SystemPackageManager(ABC):
     @abstractmethod
     def install(self, *packages: str) -> None:

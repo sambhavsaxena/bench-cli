@@ -30,7 +30,19 @@ A zero-dependency CLI for managing [Frappe](https://frappeframework.com) environ
 curl -fsSL https://raw.githubusercontent.com/frappe/bench-cli/main/install.sh | bash
 ```
 
-Clones to `~/bench-cli` and adds `bench` to `PATH`. Or manually:
+Clones to `~/bench-cli` and adds `bench` to `PATH`. bench never runs as root — if you
+launch the installer as root (e.g. a fresh VPS), it creates a non-root user
+(`frappe` by default), grants it passwordless sudo, and continues the install as that
+user. It configures passwordless sudo so `bench init` and the admin wizard can install
+packages and manage services without a password prompt.
+
+For unattended setups, pass flags (or the matching `BENCH_USER` / `BENCH_YES` env vars):
+
+```bash
+curl -fsSL .../install.sh | bash -s -- --user frappe -y   # non-interactive, user "frappe"
+```
+
+Or manually:
 
 ```bash
 git clone https://github.com/frappe/bench-cli ~/bench-cli
