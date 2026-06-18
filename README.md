@@ -21,8 +21,8 @@ A zero-dependency CLI for managing [Frappe](https://frappeframework.com) environ
 
 ## Requirements
 
-**Ubuntu 22.04+** — Python 3.11+, `sudo` access  
-**macOS** — Python 3.11+, [Homebrew](https://brew.sh) (dev only)
+**Ubuntu 22.04+** — Python 3.11+, a user with `sudo` access  
+**macOS** — Python 3.11+, [Homebrew](https://brew.sh) (dev only — no `sudo` setup)
 
 ## Install
 
@@ -30,33 +30,87 @@ A zero-dependency CLI for managing [Frappe](https://frappeframework.com) environ
 curl -fsSL https://raw.githubusercontent.com/frappe/bench-cli/main/install.sh | bash
 ```
 
-Clones to `~/bench-cli` and adds `bench` to `PATH`. bench never runs as root — if you
-launch the installer as root (e.g. a fresh VPS), it creates a non-root user
-(`frappe` by default), grants it passwordless sudo, and continues the install as that
-user. It configures passwordless sudo so `bench init` and the admin wizard can install
-packages and manage services without a password prompt.
+This single command:
 
-For unattended setups, pass flags (or the matching `BENCH_USER` / `BENCH_YES` env vars):
+- Clones bench-cli to `~/bench-cli` and adds `bench` to your `PATH`
+- Installs [`uv`](https://github.com/astral-sh/uv) and Node.js if missing
+- Creates the isolated admin environment (`.admin-venv`) used by the setup wizard and admin UI
+- Configures **passwordless sudo** for your user (see below)
+
+### Running as root (fresh VPS)
+
+bench is never meant to run as root. If you launch the installer as **root** — common on a
+freshly provisioned VPS where `root` is the only account — it will:
+
+1. Create (or reuse) a non-root user — `frappe` by default, or whatever you choose
+2. Grant that user passwordless sudo via `/etc/sudoers.d/<user>`
+3. Re-run the rest of the install **as that user** automatically
+
+No password is set for a freshly created user — login stays SSH-key based, and passwordless
+sudo covers everything bench needs. This also means a brand-new VPS user with no password set
+works out of the box.
+
+### Non-interactive install
+
+Pass flags after `--`, or set the matching environment variables, to skip all prompts:
+
+| Flag | Env var | Default | Purpose |
+|------|---------|---------|---------|
+| `--user <name>` | `BENCH_USER` | `frappe` | Non-root user to create/use when run as root |
+| `-y`, `--yes` | `BENCH_YES=1` | off | Never prompt; accept defaults |
 
 ```bash
-curl -fsSL .../install.sh | bash -s -- --user frappe -y   # non-interactive, user "frappe"
+# Unattended, as root: create/use user "frappe" and finish silently
+curl -fsSL https://raw.githubusercontent.com/frappe/bench-cli/main/install.sh | bash -s -- --user frappe -y
 ```
 
-Or manually:
+### Manual install
 
 ```bash
 git clone https://github.com/frappe/bench-cli ~/bench-cli
 echo 'export PATH="$HOME/bench-cli:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
 
-## Quick start
+If you install manually, make sure your user has **passwordless sudo** — bench needs it (see
+below). The one-line installer sets this up for you.
+
+### Passwordless sudo
+
+`bench init` and the admin setup wizard install system packages and manage services through
+many `sudo` calls, and the wizard runs them with **no terminal** (it can't answer a password
+prompt). bench therefore requires passwordless sudo for your user. The installer configures it;
+if it's missing, `bench init` stops immediately with instructions instead of hanging. To set it
+up by hand:
 
 ```bash
-bench new my-bench       # creates bench.toml — edit it to set MariaDB password
-bench init               # installs deps, creates venv, clones frappe, generates Procfile
+echo "$(whoami) ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/$(whoami)
+sudo chmod 0440 /etc/sudoers.d/$(whoami)
+```
+
+## Set up your first bench
+
+After installing, you have two ways to configure and initialize a bench.
+
+### Guided setup (recommended)
+
+```bash
+bench new my-bench       # scaffold a bench
+bench start              # not yet initialized → launches the setup wizard
+```
+
+`bench start` detects that the bench isn't initialized and opens a browser-based wizard at
+`http://localhost:8002`. The wizard collects your MariaDB and admin passwords, lets you pick
+storage options, and runs the full initialization with a live progress view.
+
+### Manual setup
+
+```bash
+bench new my-bench                      # creates bench.toml
+$EDITOR benches/my-bench/bench.toml     # set the MariaDB root + admin passwords
+bench init                              # installs deps, creates venv, clones frappe, generates Procfile
 bench get-app https://github.com/frappe/erpnext --branch version-16
 bench new-site site1.localhost
-bench start              # starts web, workers, Redis, and admin UI
+bench start                             # starts web, workers, Redis, and admin UI
 ```
 
 - App: `http://site1.localhost:8000`
