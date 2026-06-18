@@ -151,14 +151,15 @@ class BenchConfig:
 
     @staticmethod
     def _parse_gunicorn(data: dict, http_port: int = 8000) -> GunicornConfig:
+        d = GunicornConfig()
         return GunicornConfig(
-            workers=data.get("workers", 4),
-            threads=data.get("threads", 4),
-            timeout=data.get("timeout", 120),
-            worker_class=data.get("worker_class", "sync"),
-            malloc_arena_max=data.get("malloc_arena_max", 0),
-            max_requests=data.get("max_requests", 0),
-            max_requests_jitter=data.get("max_requests_jitter", 0),
+            workers=data.get("workers", d.workers),
+            threads=data.get("threads", d.threads),
+            timeout=data.get("timeout", d.timeout),
+            worker_class=data.get("worker_class", d.worker_class),
+            malloc_arena_max=data.get("malloc_arena_max", d.malloc_arena_max),
+            max_requests=data.get("max_requests", d.max_requests),
+            max_requests_jitter=data.get("max_requests_jitter", d.max_requests_jitter),
         )
 
     @staticmethod
