@@ -31,8 +31,13 @@ class VolumeReader:
         from bench_cli.platform import is_linux
 
         config = BenchConfig.from_file(self._bench_root / "bench.toml").volume
-        # Volumes are mandatory on Linux; "enabled" reflects live state — whether
-        # the pool actually exists yet (False on macOS and before bench init).
+        # A bench can opt out of ZFS (shared-DB benches set volume.enabled =
+        # false). Since pools are shared across benches, never infer "enabled"
+        # from the pool merely existing — honour the bench's own config first.
+        if not config.enabled:
+            return VolumeInfo(enabled=False, pool=config.pool)
+        # "enabled" then reflects live state — whether this bench's pool actually
+        # exists yet (False on macOS and before bench init).
         health = self._pool_health(config.pool) if is_linux() else "unknown"
         if health == "unknown":
             return VolumeInfo(enabled=False, pool=config.pool)

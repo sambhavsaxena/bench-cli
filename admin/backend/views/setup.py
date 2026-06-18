@@ -49,48 +49,54 @@ def save_config():
 
 @setup_bp.route("/validate-mariadb", methods=["POST"])
 def validate_mariadb():
-    """Tell the wizard whether the entered root password will work.
+    """Tell the wizard whether the entered credentials will work.
 
-    - not installed `secure_installation` function will set this password
-    - dedicated instance not provisioned yet → init will create + secure it
-    - installed+valid everything is fine
-    - installed+invalid panic
+    Dedicated instance: not yet provisioned → bench init will create it → will_install.
+    Shared instance: must validate against the running system MariaDB.
     """
     from bench_cli.managers.mariadb_manager import MariaDBManager
 
     data = request.get_json(silent=True) or {}
     password = data.get("mariadb_password", "")
+    admin_user = data.get("mariadb_admin_user", "root")
+    dedicated = data.get("dedicated_db", True)  # True = dedicated, False = shared
 
-    # Carry the bench's instance/socket/port so a dedicated bench is validated
-    # against its own instance rather than the shared default.
     bench_root = Path(current_app.config["BENCH_ROOT"])
-    config = _mariadb_config(bench_root, password)
+    config = _mariadb_config(bench_root, password, admin_user, dedicated=dedicated)
     manager = MariaDBManager(config)
 
     if not manager.is_installed():
         return jsonify({"state": "will_install"})
+
+    # Dedicated instance not yet provisioned — init will create + secure it.
+    if dedicated and manager.is_dedicated and not manager.service_is_active():
+        return jsonify({"state": "will_install"})
+
     if manager.check_credentials(password):
         return jsonify({"state": "valid"})
-    # A dedicated instance that isn't running yet will be created + secured by
-    # bench init — don't mistake "not provisioned" for "wrong password".
-    if manager.is_dedicated and not manager.service_is_active():
-        return jsonify({"state": "will_install"})
+
     return jsonify({"state": "invalid"})
 
 
-def _mariadb_config(bench_root: Path, password: str):
-    """Build a MariaDBConfig from the bench's toml with the entered password applied."""
+def _mariadb_config(bench_root: Path, password: str, admin_user: str = "root", dedicated: bool = True):
+    """Build a MariaDBConfig from the bench's toml with the entered credentials applied.
+
+    For shared DB (dedicated=False) we don't read the bench toml — the toml may
+    already have a dedicated instance name set (written by `bench new`), which would
+    make the manager try the dedicated socket that doesn't exist yet.
+    """
     from bench_cli.config.mariadb_config import MariaDBConfig
 
-    config = MariaDBConfig(root_password=password)
-    toml_path = bench_root / "bench.toml"
-    if toml_path.exists():
-        try:
-            settings = BenchTomlBuilder.read_settings(toml_path)
-            config.instance = settings.get("mariadb_instance", "") or ""
-            config.socket_path = settings.get("mariadb_socket_path", "") or ""
-        except Exception:
-            pass
+    config = MariaDBConfig(root_password=password, admin_user=admin_user)
+    if dedicated:
+        toml_path = bench_root / "bench.toml"
+        if toml_path.exists():
+            try:
+                settings = BenchTomlBuilder.read_settings(toml_path)
+                config.instance = settings.get("mariadb_instance", "") or ""
+                config.socket_path = settings.get("mariadb_socket_path", "") or ""
+            except Exception:
+                pass
     return config
 
 

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class AdminConfig:
-    port: int = 8002
+    port: int = 7000 # New series not conflicting with sites
     timeout: int = 180  # seconds
     enabled: bool = False
     password: str = ""
