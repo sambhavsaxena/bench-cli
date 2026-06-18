@@ -19,14 +19,41 @@ class RunCommand(Command):
         self.bench = bench
 
     def run(self) -> None:
-        from bench_cli.managers.process_manager import ProcessManagerFactory
+        from bench_cli.managers.process_manager import ProcessManager
 
-        if not (self.bench.path / "env" / "bin" / "python").exists():
-            self._start_wizard()
+        initialized = (self.bench.path / "env" / "bin" / "python").exists()
+        process_manager = self.bench.config.production.process_manager
+
+        # Dev bench (no process manager): run in the foreground, or the
+        # standalone setup wizard if it isn't initialized yet.
+        if not process_manager:
+            if not initialized:
+                self._start_wizard()
+                return
+            ProcessManager(self.bench).start()
             return
 
-        manager = ProcessManagerFactory.create(self.bench)
-        if self.bench.config.production.enabled and not manager.is_configured():
+        # Production bench (systemd/supervisor): the admin always runs under the
+        # process manager. Pick by the configured manager rather than via the
+        # factory, which gates on production.enabled.
+        from bench_cli.managers.supervisor_process_manager import SupervisorProcessManager
+        from bench_cli.managers.systemd_process_manager import SystemdProcessManager
+
+        manager = (SystemdProcessManager if process_manager == "systemd"
+                   else SupervisorProcessManager)(self.bench)
+
+        if not initialized:
+            # No workload yet — bring up just the admin (socket-activated) so the
+            # setup wizard is served at the bench's domain. The workload starts
+            # once the bench is initialized and `setup production` is run.
+            from bench_cli.admin_url import admin_url
+
+            manager.setup_admin()
+            print(f"Admin running at {admin_url(self.bench.config)}")
+            print("Finish setup there; the bench starts serving once it's initialized.")
+            return
+
+        if not manager.is_configured():
             from bench_cli.commands.restart import _incomplete_message
 
             print(_incomplete_message(self.bench))

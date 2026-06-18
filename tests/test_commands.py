@@ -664,3 +664,44 @@ def test_restart_production_restarts_when_configured(tmp_path: Path) -> None:
         RestartCommand(bench).run()
     mgr.generate_config.assert_called_once()
     mgr.restart.assert_called_once()
+
+
+def _mark_initialized(bench: Bench) -> None:
+    (bench.path / "env" / "bin").mkdir(parents=True, exist_ok=True)
+    (bench.path / "env" / "bin" / "python").write_text("")
+
+
+def test_start_dev_uninitialized_runs_wizard(tmp_path: Path) -> None:
+    from bench_cli.commands.start import RunCommand
+
+    bench = make_bench(tmp_path)  # no process manager → dev
+    with patch.object(RunCommand, "_start_wizard") as wizard:
+        RunCommand(bench).run()
+    wizard.assert_called_once()
+
+
+def test_start_production_uninitialized_brings_up_admin(tmp_path: Path) -> None:
+    # A systemd bench that isn't initialized yet runs its admin under systemd
+    # (to serve the wizard), not a foreground wizard server.
+    from bench_cli.commands.start import RunCommand
+
+    bench = make_bench(tmp_path)
+    bench.config.production.process_manager = "systemd"
+    bench.config.admin.domain = "admin.example.com"
+    with patch("bench_cli.managers.systemd_process_manager.SystemdProcessManager.setup_admin") as setup_admin, \
+         patch.object(RunCommand, "_start_wizard") as wizard:
+        RunCommand(bench).run()
+    setup_admin.assert_called_once()
+    wizard.assert_not_called()
+
+
+def test_start_production_initialized_starts_manager(tmp_path: Path) -> None:
+    from bench_cli.commands.start import RunCommand
+
+    bench = make_bench(tmp_path)
+    bench.config.production.process_manager = "systemd"
+    _mark_initialized(bench)
+    with patch("bench_cli.managers.systemd_process_manager.SystemdProcessManager.is_configured", return_value=True), \
+         patch("bench_cli.managers.systemd_process_manager.SystemdProcessManager.start") as start:
+        RunCommand(bench).run()
+    start.assert_called_once()
