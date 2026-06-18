@@ -9,7 +9,7 @@ import LucideDownload from '~icons/lucide/download'
 import LucideTrash2 from '~icons/lucide/trash-2'
 import LucideTriangleAlert from '~icons/lucide/triangle-alert'
 import LucideRefreshCw from '~icons/lucide/refresh-cw'
-import ConfigTree from '../components/ConfigTree.vue'
+import LucidePlus from '~icons/lucide/plus'
 
 const route = useRoute()
 const router = useRouter()
@@ -91,44 +91,108 @@ async function loginToSite() {
   }
 }
 
-const showEditConfig = ref(false)
-const editConfigText = ref('')
-const editConfigError = ref('')
-const editConfigLoading = ref(false)
+// ── Config tab ─────────────────────────────────────────────────────────────
+const showConfigEntry = ref(false)
+const configEntryKey = ref('')
+const configEntryValue = ref('')
+const configEntryIsNew = ref(true)
+const configEntryError = ref('')
+const configSaving = ref(false)
 
-function openEditConfig() {
-  editConfigText.value = JSON.stringify(site.value.site_config, null, 2)
-  editConfigError.value = ''
-  showEditConfig.value = true
+const showDeleteConfig = ref(false)
+const deleteConfigKey = ref('')
+const deletingConfig = ref(false)
+const deleteConfigError = ref('')
+
+const configColumns = [
+  { label: 'Key', key: 'key', align: 'left', width: 2 },
+  { label: 'Value', key: 'value', align: 'left', width: 3 },
+  { label: '', key: 'actions', align: 'right', width: '3rem' },
+]
+
+const configRows = computed(() =>
+  Object.entries(site.value?.site_config || {}).map(([key, value]) => ({
+    name: key,
+    key,
+    value: typeof value === 'string' ? value : JSON.stringify(value),
+  }))
+)
+
+function configMenuOptions(key) {
+  return [
+    { label: 'Edit', onClick: () => openConfigEntry(key) },
+    {
+      label: 'Delete',
+      icon: LucideTrash2,
+      theme: 'red',
+      onClick: () => { deleteConfigKey.value = key; deleteConfigError.value = ''; showDeleteConfig.value = true },
+    },
+  ]
 }
 
-async function saveConfig() {
-  editConfigError.value = ''
-  let parsed
-  try {
-    parsed = JSON.parse(editConfigText.value)
-  } catch {
-    editConfigError.value = 'Invalid JSON — please fix the syntax before saving.'
+// Parse a value as JSON (numbers, booleans, arrays, objects); fall back to raw text.
+function parseConfigValue(raw) {
+  const t = raw.trim()
+  if (t === '') return ''
+  try { return JSON.parse(t) } catch { return raw }
+}
+
+function openConfigEntry(key = null) {
+  configEntryError.value = ''
+  configEntryIsNew.value = key === null
+  configEntryKey.value = key || ''
+  if (key !== null) {
+    const v = site.value.site_config[key]
+    configEntryValue.value = typeof v === 'string' ? v : JSON.stringify(v)
+  } else {
+    configEntryValue.value = ''
+  }
+  showConfigEntry.value = true
+}
+
+async function patchConfig(next) {
+  const res = await fetch(`/api/sites/${siteName}/config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(next),
+  })
+  const d = await res.json()
+  if (!d.ok) throw new Error(d.error || 'Failed to update config.')
+}
+
+async function saveConfigEntry() {
+  const key = configEntryKey.value.trim()
+  if (!key) { configEntryError.value = 'Key is required.'; return }
+  if (configEntryIsNew.value && key in (site.value.site_config || {})) {
+    configEntryError.value = 'That key already exists.'
     return
   }
-  editConfigLoading.value = true
+  configEntryError.value = ''
+  configSaving.value = true
   try {
-    const res = await fetch(`/api/sites/${siteName}/config`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(parsed),
-    })
-    const d = await res.json()
-    if (d.ok) {
-      showEditConfig.value = false
-      await load()
-    } else {
-      editConfigError.value = d.error
-    }
+    await patchConfig({ ...site.value.site_config, [key]: parseConfigValue(configEntryValue.value) })
+    showConfigEntry.value = false
+    await load()
   } catch (e) {
-    editConfigError.value = e.message
+    configEntryError.value = e.message
   } finally {
-    editConfigLoading.value = false
+    configSaving.value = false
+  }
+}
+
+async function deleteConfigEntry() {
+  deletingConfig.value = true
+  deleteConfigError.value = ''
+  try {
+    const next = { ...site.value.site_config }
+    delete next[deleteConfigKey.value]
+    await patchConfig(next)
+    showDeleteConfig.value = false
+    await load()
+  } catch (e) {
+    deleteConfigError.value = e.message
+  } finally {
+    deletingConfig.value = false
   }
 }
 
@@ -524,16 +588,15 @@ onMounted(() => { load(); loadRegistry() })
           <div class="flex items-center gap-2">
             <h1 class="flex items-center gap-1.5 font-semibold text-ink-gray-9">
               {{ siteName }}
-              <span
-                class="group relative inline-flex h-2 w-2 shrink-0 rounded-full"
-                :class="!site.exists ? 'bg-ink-gray-3' : site.broken ? 'bg-surface-red-4' : 'bg-surface-green-3'"
-              >
-                <span class="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-ink-gray-9 px-1.5 py-0.5 text-[10px] text-surface-white opacity-0 transition-opacity group-hover:opacity-100">
+              <span class="group relative inline-flex h-2 w-2 shrink-0 rounded-full"
+                :class="!site.exists ? 'bg-ink-gray-3' : site.broken ? 'bg-surface-red-4' : 'bg-surface-green-3'">
+                <span
+                  class="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-ink-gray-9 px-1.5 py-0.5 text-[10px] text-surface-white opacity-0 transition-opacity group-hover:opacity-100">
                   {{ !site.exists ? 'Offline' : site.broken ? 'Broken' : 'Online' }}
                 </span>
               </span>
             </h1>
-            <Badge v-if="site.site_config?.ssl" label="SSL" theme="blue" />
+            <Badge v-if="site.ssl" label="SSL" theme="blue" />
           </div>
           <div class="flex items-center gap-4 text-sm text-ink-gray-5">
             <span v-if="site.db_name" class="flex items-center gap-1.5">
@@ -550,9 +613,6 @@ onMounted(() => { load(); loadRegistry() })
           </div>
         </div>
         <div class="flex shrink-0 items-center gap-2">
-          <Button v-if="installable.length" variant="outline" @click="showInstall = true">
-            Install App
-          </Button>
           <Button variant="solid" @click="showLogin = true">
             Login to Site
           </Button>
@@ -566,58 +626,82 @@ onMounted(() => { load(); loadRegistry() })
         <template #tab-panel="{ tab }">
           <!-- Apps -->
           <div v-if="tab.label === 'Apps'" class="pt-4">
-            <div v-if="!site.installed_apps.length" class="py-10 text-center text-sm text-ink-gray-4">
-              No apps installed on this site.
-            </div>
-            <div v-else class="divide-y rounded border">
-              <div
-                v-for="app in site.installed_apps"
-                :key="app"
-                class="flex items-center justify-between px-4 py-3"
-              >
-                <div class="flex items-center gap-3">
-                  <div
-                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md overflow-hidden"
-                    :style="logoMap[app] ? {} : { background: hashColor(app) }"
-                  >
-                    <img v-if="logoMap[app]" :src="logoMap[app]" :alt="app" class="h-full w-full object-contain" />
-                    <span v-else class="text-sm font-bold text-white">{{ app[0].toUpperCase() }}</span>
-                  </div>
-                  <span class="text-sm font-medium text-ink-gray-8">{{ titleMap[app] || app }}</span>
-                </div>
-                <Button v-if="app !== 'frappe'" variant="ghost" theme="red" size="sm" @click="confirmUninstall(app)">
-                  Uninstall
+            <div class="rounded-lg border border-outline-gray-2">
+              <div class="flex items-center justify-between border-b border-outline-gray-2 px-4 py-2.5">
+                <h3 class="text-sm font-semibold text-ink-gray-9">Installed Apps</h3>
+                <Button v-if="installable.length" variant="ghost" size="sm" @click="showInstall = true">
+                  <template #prefix><LucidePlus class="h-4 w-4" /></template>
+                  Install App
                 </Button>
+              </div>
+              <div v-if="!site.installed_apps.length" class="py-12 text-center text-sm text-ink-gray-4">
+                No apps installed on this site.
+              </div>
+              <div v-else class="divide-y divide-outline-gray-1">
+                <div v-for="app in site.installed_apps" :key="app" class="flex items-center justify-between px-4 py-3">
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md overflow-hidden"
+                      :style="logoMap[app] ? {} : { background: hashColor(app) }">
+                      <img v-if="logoMap[app]" :src="logoMap[app]" :alt="app" class="h-full w-full object-contain" />
+                      <span v-else class="text-sm font-bold text-white">{{ app[0].toUpperCase() }}</span>
+                    </div>
+                    <span class="text-sm font-medium text-ink-gray-8">{{ titleMap[app] || app }}</span>
+                  </div>
+                  <Button v-if="app !== 'frappe'" variant="ghost" theme="red" size="sm" @click="confirmUninstall(app)">
+                    Uninstall
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Config -->
-          <div v-else-if="tab.label === 'Config'" class="pt-4">
-            <div class="rounded border bg-surface-gray-1 p-4">
-              <div class="mb-3 flex items-center justify-between">
-                <p class="text-xs font-medium text-ink-gray-5">site_config.json</p>
-                <Button variant="ghost" size="sm" @click="openEditConfig">Edit</Button>
+          <div v-else-if="tab.label === 'Config'" class="pt-4 flex flex-col gap-2">
+            <div class="rounded-lg border border-outline-gray-2">
+              <div class="flex items-center justify-between px-4 py-2.5">
+                <h3 class="text-sm font-semibold text-ink-gray-9">Site Config</h3>
+                <Button variant="ghost" size="sm" @click="openConfigEntry()">
+                  <template #prefix>
+                    <LucidePlus class="h-4 w-4" />
+                  </template>
+                  Add Key
+                </Button>
               </div>
-              <div v-if="!site.site_config || !Object.keys(site.site_config).length" class="text-xs text-ink-gray-4">
-                Empty config.
+              <div v-if="!configRows.length" class="py-12 text-center text-sm text-ink-gray-4">
+                No editable config keys.
               </div>
-              <ConfigTree v-else :data="site.site_config" class="font-mono text-xs" />
+              <ListView v-else class="px-2 pb-2" :columns="configColumns" :rows="configRows" row-key="name"
+                :options="{ selectable: false, showTooltip: false, rowHeight: 44 }">
+                <template #cell="{ column, row, item }">
+                  <div v-if="column.key === 'actions'" class="flex w-full justify-end">
+                    <Dropdown :options="configMenuOptions(row.key)" placement="left">
+                      <template #default="{ open }">
+                        <Button variant="ghost" size="sm" :active="open">
+                          <template #icon>
+                            <LucideMoreVertical class="h-4 w-4" />
+                          </template>
+                        </Button>
+                      </template>
+                    </Dropdown>
+                  </div>
+                  <div v-else class="w-full truncate text-sm"
+                    :class="column.key === 'key' ? 'font-medium text-ink-gray-8' : 'font-mono text-ink-gray-6'">{{ item
+                    }}</div>
+                </template>
+              </ListView>
             </div>
+            <p class="px-1 text-xs text-ink-gray-4">
+              Database credentials, installed apps and SSL are managed by the system and aren't shown or editable here.
+            </p>
           </div>
 
           <!-- Backups -->
           <div v-else-if="tab.label === 'Backups'" class="pt-4 flex flex-col gap-4">
             <!-- Automatic backup status — click to configure -->
-            <button
-              type="button"
-              @click="openSchedule"
-              class="group flex items-center gap-2.5 rounded-lg border border-outline-gray-2 px-3.5 py-2.5 text-left transition-colors hover:border-outline-gray-3 hover:bg-surface-gray-1"
-            >
-              <span
-                class="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                :class="currentSchedule ? 'bg-surface-green-3' : 'bg-ink-gray-4'"
-              ></span>
+            <button type="button" @click="openSchedule"
+              class="group flex items-center gap-2.5 rounded-lg border border-outline-gray-2 px-3.5 py-2.5 text-left transition-colors hover:border-outline-gray-3 hover:bg-surface-gray-1">
+              <span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                :class="currentSchedule ? 'bg-surface-green-3' : 'bg-ink-gray-4'"></span>
               <span class="text-sm font-medium text-ink-gray-8">Automatic backups</span>
               <span class="text-sm text-ink-gray-5">
                 <template v-if="scheduleLoading">Loading…</template>
@@ -638,7 +722,9 @@ onMounted(() => { load(); loadRegistry() })
                     Backup now
                   </Button>
                   <Button variant="ghost" size="sm" :loading="backupsLoading" @click="loadBackups" title="Refresh">
-                    <template #icon><LucideRefreshCw class="h-4 w-4" /></template>
+                    <template #icon>
+                      <LucideRefreshCw class="h-4 w-4" />
+                    </template>
                   </Button>
                 </div>
               </div>
@@ -649,29 +735,24 @@ onMounted(() => { load(); loadRegistry() })
               <div v-else-if="!backups.length" class="py-12 text-center text-sm text-ink-gray-4">
                 No backups yet.
               </div>
-              <ListView
-                v-else
-                class="px-2 pb-2"
-                :columns="backupColumns"
-                :rows="backupRows"
-                row-key="name"
-                :options="{ selectable: false, showTooltip: false, rowHeight: 44 }"
-              >
+              <ListView v-else class="px-2 pb-2" :columns="backupColumns" :rows="backupRows" row-key="name"
+                :options="{ selectable: false, showTooltip: false, rowHeight: 44 }">
                 <template #cell="{ column, row, item, align }">
                   <div v-if="column.key === 'actions'" class="flex w-full justify-end">
                     <Dropdown :options="backupMenuOptions(row.set)" placement="left">
                       <template #default="{ open }">
                         <Button variant="ghost" size="sm" :active="open">
-                          <template #icon><LucideMoreVertical class="h-4 w-4" /></template>
+                          <template #icon>
+                            <LucideMoreVertical class="h-4 w-4" />
+                          </template>
                         </Button>
                       </template>
                     </Dropdown>
                   </div>
-                  <div
-                    v-else
-                    class="w-full truncate text-sm"
-                    :class="column.key === 'timestamp' ? 'text-left text-ink-gray-8' : 'text-center font-mono text-ink-gray-6'"
-                  >{{ item }}</div>
+                  <div v-else class="w-full truncate text-sm"
+                    :class="column.key === 'timestamp' ? 'text-left text-ink-gray-8' : 'text-center font-mono text-ink-gray-6'">
+                    {{ item
+                    }}</div>
                 </template>
               </ListView>
             </div>
@@ -687,19 +768,9 @@ onMounted(() => { load(); loadRegistry() })
                   <p class="text-sm font-medium text-ink-gray-8">Backup Site</p>
                   <p class="mt-0.5 text-sm text-ink-gray-5">Create an on-demand backup of the database and files.</p>
                 </div>
-                <Button variant="outline" class="shrink-0" :loading="actionLoading === 'backup'" @click="doAction('backup')">
+                <Button variant="outline" class="shrink-0" :loading="actionLoading === 'backup'"
+                  @click="doAction('backup')">
                   Backup
-                </Button>
-              </div>
-
-              <!-- Login -->
-              <div class="flex items-center justify-between gap-4 px-4 py-3.5">
-                <div>
-                  <p class="text-sm font-medium text-ink-gray-8">Login to Site</p>
-                  <p class="mt-0.5 text-sm text-ink-gray-5">Open the site in a new tab as the Administrator.</p>
-                </div>
-                <Button variant="outline" class="shrink-0" @click="showLogin = true">
-                  Login
                 </Button>
               </div>
 
@@ -708,13 +779,14 @@ onMounted(() => { load(); loadRegistry() })
                 <div>
                   <p class="text-sm font-medium text-ink-gray-8">Enable SSL</p>
                   <p class="mt-0.5 text-sm text-ink-gray-5">
-                    <template v-if="site.site_config?.ssl">A Let's Encrypt certificate is already active for this site.</template>
+                    <template v-if="site.ssl">A Let's Encrypt certificate is already active for this site.</template>
                     <template v-else-if="!nginxEnabled">Requires nginx to be enabled for this bench.</template>
                     <template v-else>Issue a Let's Encrypt certificate and serve this site over HTTPS.</template>
                   </p>
                 </div>
-                <Badge v-if="site.site_config?.ssl" label="Enabled" theme="green" class="shrink-0" />
-                <Button v-else variant="outline" class="shrink-0" :disabled="!nginxEnabled" :loading="sslLoading" @click="enableSsl">
+                <Badge v-if="site.ssl" label="Enabled" theme="green" class="shrink-0" />
+                <Button v-else variant="outline" class="shrink-0" :disabled="!nginxEnabled" :loading="sslLoading"
+                  @click="enableSsl">
                   Enable SSL
                 </Button>
               </div>
@@ -745,7 +817,8 @@ onMounted(() => { load(); loadRegistry() })
                   <div>
                     <p class="text-sm font-medium text-ink-gray-8">Force Delete</p>
                     <p class="mt-0.5 text-sm text-ink-gray-5">
-                      This site is broken (database unreachable). Remove the site directory without running frappe cleanup.
+                      This site is broken (database unreachable). Remove the site directory without running frappe
+                      cleanup.
                     </p>
                   </div>
                   <Button variant="solid" theme="red" class="shrink-0" @click="showForceDrop = true">
@@ -763,16 +836,13 @@ onMounted(() => { load(); loadRegistry() })
     <Dialog v-model="showInstall" :options="{ title: 'Install App' }">
       <template #body-content>
         <div @pointerdown.stop>
-          <FormControl
-            label="App to install"
-            type="select"
-            v-model="selectedInstallApp"
-            :options="[{ label: 'Select an app…', value: '' }, ...installable.map(a => ({ label: a, value: a }))]"
-          />
+          <FormControl label="App to install" type="select" v-model="selectedInstallApp"
+            :options="[{ label: 'Select an app…', value: '' }, ...installable.map(a => ({ label: a, value: a }))]" />
           <ErrorMessage :message="installError" class="mt-2" />
           <div class="mt-4 flex justify-end gap-2">
             <Button variant="ghost" @click="showInstall = false">Cancel</Button>
-            <Button variant="solid" :loading="installLoading" :disabled="!selectedInstallApp" @click="installApp">Install</Button>
+            <Button variant="solid" :loading="installLoading" :disabled="!selectedInstallApp"
+              @click="installApp">Install</Button>
           </div>
         </div>
       </template>
@@ -789,20 +859,13 @@ onMounted(() => { load(); loadRegistry() })
               This action <strong>cannot be undone</strong>.
             </p>
           </div>
-          <FormControl
-            class="mt-4"
-            type="text"
-            :label="`Type the site name to confirm`"
-            v-model="dropConfirmText"
-            :placeholder="siteName"
-            autocomplete="off"
-            @keydown.enter="dropConfirmText === siteName && (showDrop = false, doAction('drop'))"
-          />
+          <FormControl class="mt-4" type="text" :label="`Type the site name to confirm`" v-model="dropConfirmText"
+            :placeholder="siteName" autocomplete="off"
+            @keydown.enter="dropConfirmText === siteName && (showDrop = false, doAction('drop'))" />
           <div class="mt-4 flex justify-end gap-2">
             <Button variant="ghost" @click="showDrop = false">Cancel</Button>
             <Button variant="solid" theme="red" :loading="actionLoading === 'drop'"
-              :disabled="dropConfirmText !== siteName"
-              @click="showDrop = false; doAction('drop')">Drop Site</Button>
+              :disabled="dropConfirmText !== siteName" @click="showDrop = false; doAction('drop')">Drop Site</Button>
           </div>
         </div>
       </template>
@@ -812,7 +875,8 @@ onMounted(() => { load(); loadRegistry() })
     <Dialog v-model="showForceDrop" :options="{ title: 'Force Delete Site', size: 'sm' }">
       <template #body-content>
         <p class="text-sm text-ink-gray-7">
-          Force delete <strong>{{ siteName }}</strong>? The site directory will be removed immediately without frappe cleanup. The database will <strong>not</strong> be dropped.
+          Force delete <strong>{{ siteName }}</strong>? The site directory will be removed immediately without frappe
+          cleanup. The database will <strong>not</strong> be dropped.
         </p>
         <ErrorMessage v-if="forceDropError" :message="forceDropError" class="mt-2" />
         <div class="mt-4 flex justify-end gap-2">
@@ -827,13 +891,8 @@ onMounted(() => { load(); loadRegistry() })
     <Dialog v-model="showLogin" :options="{ title: 'Login to Site', size: 'sm' }">
       <template #body-content>
         <div @pointerdown.stop>
-          <FormControl
-            label="Administrator password"
-            type="password"
-            v-model="loginPassword"
-            placeholder="admin"
-            @keydown.enter="loginToSite"
-          />
+          <FormControl label="Administrator password" type="password" v-model="loginPassword" placeholder="admin"
+            @keydown.enter="loginToSite" />
           <ErrorMessage :message="loginError" class="mt-2" />
           <div class="mt-4 flex justify-end gap-2">
             <Button variant="ghost" @click="showLogin = false">Cancel</Button>
@@ -845,21 +904,37 @@ onMounted(() => { load(); loadRegistry() })
       </template>
     </Dialog>
 
-    <!-- Edit Config dialog -->
-    <Dialog v-model="showEditConfig" :options="{ title: 'Edit site_config.json', size: 'lg' }">
+    <!-- Add / Edit config key dialog -->
+    <Dialog v-model="showConfigEntry"
+      :options="{ title: configEntryIsNew ? 'Add Config Key' : 'Edit Config Key', size: 'sm' }">
       <template #body-content>
-        <div @pointerdown.stop>
-          <textarea
-            v-model="editConfigText"
-            rows="20"
-            class="w-full rounded border bg-surface-gray-1 p-3 font-mono text-sm text-ink-gray-8 focus:outline-none focus:ring-1 focus:ring-gray-400"
-            spellcheck="false"
-          />
-          <ErrorMessage :message="editConfigError" class="mt-2" />
-          <div class="mt-4 flex justify-end gap-2">
-            <Button variant="ghost" @click="showEditConfig = false">Cancel</Button>
-            <Button variant="solid" :loading="editConfigLoading" @click="saveConfig">Save</Button>
+        <div @pointerdown.stop class="flex flex-col gap-3">
+          <FormControl label="Key" type="text" v-model="configEntryKey" :disabled="!configEntryIsNew"
+            placeholder="key_name" />
+          <FormControl label="Value" type="textarea" v-model="configEntryValue" :rows="3"
+            placeholder='"text", 42, true, ["a", "b"]' />
+          <p class="text-xs text-ink-gray-4">
+            Parsed as JSON when possible (numbers, booleans, arrays, objects); otherwise stored as text.
+          </p>
+          <ErrorMessage :message="configEntryError" />
+          <div class="mt-1 flex justify-end gap-2">
+            <Button variant="ghost" @click="showConfigEntry = false">Cancel</Button>
+            <Button variant="solid" :loading="configSaving" @click="saveConfigEntry">Save</Button>
           </div>
+        </div>
+      </template>
+    </Dialog>
+
+    <!-- Delete config key dialog -->
+    <Dialog v-model="showDeleteConfig" :options="{ title: 'Delete Config Key', size: 'sm' }">
+      <template #body-content>
+        <p class="text-sm text-ink-gray-7">
+          Remove <strong>{{ deleteConfigKey }}</strong> from <strong>site_config.json</strong>?
+        </p>
+        <ErrorMessage v-if="deleteConfigError" :message="deleteConfigError" class="mt-2" />
+        <div class="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" @click="showDeleteConfig = false">Cancel</Button>
+          <Button variant="solid" theme="red" :loading="deletingConfig" @click="deleteConfigEntry">Delete</Button>
         </div>
       </template>
     </Dialog>
@@ -868,7 +943,8 @@ onMounted(() => { load(); loadRegistry() })
     <Dialog v-model="showDeleteBackup" :options="{ title: 'Delete Backup', size: 'sm' }">
       <template #body-content>
         <p class="text-sm leading-relaxed text-ink-gray-7">
-          Delete the backup from <strong>{{ deleteBackupTarget ? formatBackupDate(deleteBackupTarget.created_at) : '' }}</strong>? This cannot be undone.
+          Delete the backup from <strong>{{ deleteBackupTarget ? formatBackupDate(deleteBackupTarget.created_at) : ''
+          }}</strong>? This cannot be undone.
         </p>
         <ErrorMessage v-if="deleteBackupError" :message="deleteBackupError" class="mt-2" />
         <div class="mt-4 flex justify-end gap-2">
@@ -886,15 +962,11 @@ onMounted(() => { load(); loadRegistry() })
           <div class="flex flex-col gap-1.5">
             <span class="text-xs font-medium text-ink-gray-6">Frequency</span>
             <div class="flex gap-1.5">
-              <button
-                v-for="f in ['daily', 'weekly', 'monthly']"
-                :key="f"
+              <button v-for="f in ['daily', 'weekly', 'monthly']" :key="f"
                 class="rounded-md border px-3 py-1.5 text-sm capitalize transition-colors"
                 :class="schedFrequency === f
                   ? 'border-outline-gray-4 bg-surface-gray-3 text-ink-gray-9'
-                  : 'border-outline-gray-2 bg-surface-white text-ink-gray-6 hover:border-outline-gray-3 hover:text-ink-gray-8'"
-                @click="schedFrequency = f"
-              >{{ f }}</button>
+                  : 'border-outline-gray-2 bg-surface-white text-ink-gray-6 hover:border-outline-gray-3 hover:text-ink-gray-8'" @click="schedFrequency = f">{{ f }}</button>
             </div>
           </div>
 
@@ -902,15 +974,11 @@ onMounted(() => { load(); loadRegistry() })
           <div v-if="schedFrequency === 'weekly'" class="flex flex-col gap-1.5">
             <span class="text-xs font-medium text-ink-gray-6">Day of week</span>
             <div class="flex gap-1">
-              <button
-                v-for="(day, idx) in WEEKDAY_LABELS"
-                :key="idx"
+              <button v-for="(day, idx) in WEEKDAY_LABELS" :key="idx"
                 class="w-10 rounded-md border py-1.5 text-xs font-medium transition-colors"
                 :class="schedWeekday === idx
                   ? 'border-outline-gray-4 bg-surface-gray-3 text-ink-gray-9'
-                  : 'border-outline-gray-2 bg-surface-white text-ink-gray-6 hover:border-outline-gray-3 hover:text-ink-gray-8'"
-                @click="schedWeekday = idx"
-              >{{ day }}</button>
+                  : 'border-outline-gray-2 bg-surface-white text-ink-gray-6 hover:border-outline-gray-3 hover:text-ink-gray-8'" @click="schedWeekday = idx">{{ day }}</button>
             </div>
           </div>
 
@@ -933,13 +1001,8 @@ onMounted(() => { load(); loadRegistry() })
           <ErrorMessage :message="scheduleError" />
 
           <div class="flex items-center justify-between gap-2 pt-1">
-            <Button
-              v-if="currentSchedule"
-              variant="subtle"
-              theme="red"
-              :loading="scheduleRemoving"
-              @click="removeSchedule"
-            >
+            <Button v-if="currentSchedule" variant="subtle" theme="red" :loading="scheduleRemoving"
+              @click="removeSchedule">
               Disable
             </Button>
             <span v-else></span>
@@ -966,7 +1029,8 @@ onMounted(() => { load(); loadRegistry() })
             @click="showUninstall = false; doAction('uninstall-app', { app: uninstallTarget })">Uninstall</Button>
         </div>
         <div class="mt-4 border-t border-outline-gray-1 pt-3">
-          <p class="mb-2 text-xs text-ink-gray-4">If the app is broken and normal uninstall fails, force-remove it from the site's app list without running any app scripts.</p>
+          <p class="mb-2 text-xs text-ink-gray-4">If the app is broken and normal uninstall fails, force-remove it from
+            the site's app list without running any app scripts.</p>
           <ErrorMessage :message="forceUninstallError" class="mb-2" />
           <Button variant="outline" theme="red" size="sm" :loading="forceUninstallLoading" @click="doForceUninstall">
             Force Remove

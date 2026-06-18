@@ -16,6 +16,12 @@ from ..readers.site_reader import SiteReader
 
 sites_bp = Blueprint("sites", __name__)
 
+# Confidential / system-managed site_config keys. These are never sent to the
+# admin UI and cannot be edited through it — they are preserved as-is on disk.
+PROTECTED_CONFIG_KEYS = frozenset(
+    {"db_name", "db_password", "db_socket", "db_type", "db_user", "installed_apps", "ssl"}
+)
+
 
 @sites_bp.route("/")
 def index():
@@ -24,7 +30,13 @@ def index():
         sites = SiteReader(bench_root).read_all()
     except Exception as error:
         return jsonify({"error": str(error)}), 500
-    return jsonify([asdict(s) for s in sites])
+
+    payload = []
+    for s in sites:
+        d = asdict(s)
+        d["site_config"] = _public_config(s.site_config)
+        payload.append(d)
+    return jsonify(payload)
 
 
 @sites_bp.route("/<name>")
@@ -53,7 +65,8 @@ def detail(name: str):
         nginx_enabled = False
 
     site_dict = asdict(site)
-    site_dict["site_config"] = _mask_password(site.site_config)
+    site_dict["site_config"] = _public_config(site.site_config)
+    site_dict["ssl"] = bool(site.site_config.get("ssl"))
     return jsonify({"site": site_dict, "installable_apps": installable, "http_port": http_port, "nginx_enabled": nginx_enabled})
 
 
@@ -339,15 +352,13 @@ def update_config(name: str):
 
     current = json.loads(config_path.read_text())
 
-    # Preserve the real db_password if the masked sentinel came back
-    _MASK = "••••••••"
-    if data.get("db_password") == _MASK:
-        if "db_password" in current:
-            data["db_password"] = current["db_password"]
-        else:
-            del data["db_password"]
+    # The editable keys are whatever the UI sent, minus any protected key it may
+    # have included; protected keys are always preserved from the on-disk config.
+    editable = {k: v for k, v in data.items() if k not in PROTECTED_CONFIG_KEYS}
+    preserved = {k: v for k, v in current.items() if k in PROTECTED_CONFIG_KEYS}
+    merged = {**editable, **preserved}
 
-    config_path.write_text(json.dumps(data, indent=1))
+    config_path.write_text(json.dumps(merged, indent=1))
     return jsonify({"ok": True})
 
 
@@ -436,8 +447,6 @@ def delete_backup_schedule(name: str):
     return jsonify({"ok": True})
 
 
-def _mask_password(config: dict) -> dict:
-    masked = copy.deepcopy(config)
-    if "db_password" in masked:
-        masked["db_password"] = "••••••••"
-    return masked
+def _public_config(config: dict) -> dict:
+    """Drop confidential / system-managed keys before exposing site_config."""
+    return {k: copy.deepcopy(v) for k, v in config.items() if k not in PROTECTED_CONFIG_KEYS}
