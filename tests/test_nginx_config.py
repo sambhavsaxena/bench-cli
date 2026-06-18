@@ -300,3 +300,35 @@ def test_socketio_location_proxies_to_socketio_port(tmp_path: Path) -> None:
     assert "location /socket.io" in config
     assert "proxy_pass         http://127.0.0.1:9000;" in config
     assert "proxy_set_header   Upgrade $http_upgrade;" in config
+
+
+def test_site_config_has_error_pages(tmp_path: Path) -> None:
+    bench = _make_bench(tmp_path, _BASE_DATA)
+    manager = NginxManager(bench)
+
+    config = manager._generate_site_config(_BASE_SITE, ssl_ready=False)
+
+    assert "error_page 404 /_errors/404.html;" in config
+    assert "error_page 502 /_errors/502.html;" in config
+    assert "error_page 503 /_errors/503.html;" in config
+    assert "location ^~ /_errors/ {" in config
+    assert "internal;" in config
+
+
+def test_generate_config_writes_error_page_files(tmp_path: Path) -> None:
+    data = copy.deepcopy(_BASE_DATA)
+    data["admin"] = {"domain": "admin.example.com"}
+    bench = _make_bench(tmp_path, data)
+    bench.create_directories()
+    site_dir = bench.sites_path / "site1.example.com"
+    site_dir.mkdir()
+    (site_dir / "site_config.json").write_text("{}")
+
+    NginxManager(bench).generate_config(ssl_ready=False)
+
+    error_dir = bench.config_path / "nginx" / "error_pages"
+    assert sorted(p.name for p in error_dir.iterdir()) == ["404.html", "502.html", "503.html"]
+    assert "404" in (error_dir / "404.html").read_text()
+    # admin vhost also serves the custom pages
+    admin_conf = (bench.config_path / "nginx" / "sites" / "_admin.conf").read_text()
+    assert "/_errors/" in admin_conf

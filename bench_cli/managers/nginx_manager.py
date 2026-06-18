@@ -13,6 +13,35 @@ from bench_cli.utils import run_command
 _NGINX_CONF = Path("/etc/nginx/nginx.conf")
 _USER_DIRECTIVE = re.compile(r"^[ \t]*user[ \t]+[^;\n]+;", re.MULTILINE)
 
+# Custom pages for nginx-generated errors (downed upstream, missing static
+# file). App responses pass through unchanged — proxy_intercept_errors is off.
+_ERROR_PAGES = {
+    404: ("Page not found", "The page you’re looking for doesn’t exist."),
+    502: ("Temporarily unavailable", "The server isn’t responding right now. Please try again in a moment."),
+    503: ("Service unavailable", "The service is temporarily unavailable. Please try again shortly."),
+}
+
+
+def _render_error_html(code: int, title: str, message: str) -> str:
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<title>{code} — {title}</title>\n<style>\n"
+        "html,body{height:100%;margin:0}\n"
+        "body{display:flex;align-items:center;justify-content:center;"
+        'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;'
+        "background:#f8f9fa;color:#1f2730}\n"
+        ".box{text-align:center;padding:2rem;max-width:32rem}\n"
+        ".code{font-size:4rem;font-weight:700;line-height:1;margin:0;color:#171c23}\n"
+        ".title{font-size:1.25rem;font-weight:600;margin:.75rem 0 .25rem}\n"
+        ".msg{font-size:1rem;color:#6b7785;margin:0}\n"
+        "</style>\n</head>\n<body>\n"
+        f'<div class="box">\n<p class="code">{code}</p>\n'
+        f'<p class="title">{title}</p>\n<p class="msg">{message}</p>\n</div>\n'
+        "</body>\n</html>\n"
+    )
+
 if TYPE_CHECKING:
     from bench_cli.config.site_config import SiteConfig
     from bench_cli.core.bench import Bench
@@ -33,6 +62,7 @@ class NginxManager:
         nginx_dir = self.bench.config_path / "nginx"
         sites_dir = nginx_dir / "sites"
         sites_dir.mkdir(parents=True, exist_ok=True)
+        self._write_error_pages(nginx_dir)
         # admin.tls = False makes the whole bench HTTP-only: a central proxy
         # terminates TLS, so neither sites nor the admin serve HTTPS here.
         tls = self.bench.config.admin.tls
@@ -79,6 +109,25 @@ class NginxManager:
             + self._render_https_block(site, bench_name, nginx_config, bench_root)
         )
 
+    def _error_pages_dir(self) -> Path:
+        return self.bench.config_path / "nginx" / "error_pages"
+
+    def _write_error_pages(self, nginx_dir: Path) -> None:
+        error_dir = nginx_dir / "error_pages"
+        error_dir.mkdir(parents=True, exist_ok=True)
+        for code, (title, message) in _ERROR_PAGES.items():
+            (error_dir / f"{code}.html").write_text(_render_error_html(code, title, message))
+
+    def _render_error_pages(self) -> str:
+        directives = "".join(f"    error_page {code} /_errors/{code}.html;\n" for code in _ERROR_PAGES)
+        return (
+            directives
+            + "    location ^~ /_errors/ {\n"
+            + "        internal;\n"
+            + f"        alias {self._error_pages_dir()}/;\n"
+            + "    }\n\n"
+        )
+
     def _render_upstream_block(self, bench_name: str) -> str:
         upstream_server = GunicornManager(self.bench).upstream_server()
         return (
@@ -112,6 +161,7 @@ class NginxManager:
             f"        root {webroot};\n"
             f"        try_files $uri =404;\n"
             f"    }}\n\n"
+            + self._render_error_pages()
             + self._render_assets_location()
             + self._render_files_location(site)
             + self._render_socketio_location(socketio_port)
@@ -172,6 +222,7 @@ class NginxManager:
             + ssl_directives
             + f"    root {bench_root}/sites;\n"
             f"    client_max_body_size {max_body};\n\n"
+            + self._render_error_pages()
             + self._render_assets_location()
             + self._render_files_location(site)
             + self._render_socketio_location(socketio_port)
@@ -237,7 +288,7 @@ class NginxManager:
             f"        try_files $uri =404;\n"
             f"    }}\n\n"
         )
-        proxy_block = self._render_admin_proxy_location()
+        proxy_block = self._render_error_pages() + self._render_admin_proxy_location()
 
         # admin.tls = False: a central proxy terminates TLS, so nginx serves the
         # admin over plain HTTP on :80 and never redirects to HTTPS, even if a
