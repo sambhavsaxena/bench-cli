@@ -1,12 +1,11 @@
 import os
-import shutil
 import subprocess
 import time
 from contextlib import contextmanager
 from pathlib import Path
 
 from bench_cli.config.mariadb_config import MariaDBConfig
-from bench_cli.platform import get_package_manager, is_macos
+from bench_cli.platform import get_package_manager, is_macos, which
 from bench_cli.utils import run_command
 
 _MACOS_SOCKET_CANDIDATES = ["/tmp/mysql.sock", "/usr/local/var/mysql/mysql.sock"]
@@ -53,7 +52,9 @@ class MariaDBManager:
         return result.returncode == 0
 
     def is_installed(self) -> bool:
-        return bool(shutil.which("mysqld") or shutil.which("mariadbd"))
+        # mysqld/mariadbd live in /usr/sbin, often absent from a minimal PATH —
+        # use which() (searches sbin too) so we don't reinstall an existing server.
+        return bool(which("mysqld") or which("mariadbd"))
 
     def install(self) -> None:
         if self.is_installed():

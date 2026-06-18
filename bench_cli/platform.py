@@ -1,7 +1,21 @@
+import os
 import platform
+import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from enum import Enum
+
+# System bin/sbin dirs that a minimal PATH (cron, systemd, the wizard task
+# runner) often omits — notably /usr/sbin, where mariadbd/mysqld/nginx live.
+_EXTRA_BIN_DIRS = ("/usr/local/sbin", "/usr/sbin", "/sbin", "/usr/local/bin", "/usr/bin", "/bin")
+
+
+def which(name: str) -> str | None:
+    """Like ``shutil.which`` but also searches the standard sbin/bin dirs, so an
+    installed system binary is found even when PATH is minimal — otherwise the
+    install steps re-run because the daemon looks 'missing'."""
+    path = os.environ.get("PATH", os.defpath)
+    return shutil.which(name, path=os.pathsep.join([path, *_EXTRA_BIN_DIRS]))
 
 
 class Platform(Enum):
