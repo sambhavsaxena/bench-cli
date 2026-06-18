@@ -488,15 +488,6 @@ function backToConfig() {
             <p class="mt-1 text-xs text-ink-gray-5">
               After init the bench is deployed to production and reachable at this domain.
             </p>
-            <FormControl
-              class="mt-3"
-              type="checkbox"
-              label="Handle HTTPS for this bench"
-              v-model="form.admin_tls"
-            />
-            <p class="mt-1 text-xs text-ink-gray-5">
-              Uncheck if a central proxy already terminates TLS — this bench then serves plain HTTP on port 80.
-            </p>
           </div>
           <FormControl
             v-if="isLinux"

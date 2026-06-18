@@ -28,12 +28,14 @@ class NewCommand(Command):
             default="",
             help="Admin domain for this bench (defaults to <name>-admin.localhost).",
         )
-        parser.add_argument(
-            "--no-tls",
-            dest="admin_tls",
-            action="store_false",
-            default=True,
-            help="Don't terminate TLS for the admin (a central proxy fronts it on :80).",
+        tls = parser.add_mutually_exclusive_group()
+        tls.add_argument(
+            "--tls", dest="admin_tls", action="store_true", default=None,
+            help="Terminate TLS for this bench (HTTPS via Let's Encrypt).",
+        )
+        tls.add_argument(
+            "--no-tls", dest="admin_tls", action="store_false", default=None,
+            help="Serve over plain HTTP — a central proxy terminates TLS upstream.",
         )
 
     @classmethod
@@ -49,11 +51,12 @@ class NewCommand(Command):
         )
 
     def __init__(self, target_directory: Path, name: str, process_manager: str = "",
-                 admin_domain: str = "", admin_tls: bool = True) -> None:
+                 admin_domain: str = "", admin_tls: bool | None = None) -> None:
         self.target_directory = target_directory
         self.name = name
         self.process_manager = process_manager
         self.admin_domain = admin_domain
+        # None → inherit the server-wide value from a sibling bench (default True).
         self.admin_tls = admin_tls
 
     def run(self) -> None:
@@ -73,10 +76,13 @@ class NewCommand(Command):
 
         offset = self._pick_port_offset(self.target_directory)
         print("Writing bench.toml")
+        # TLS termination is a server-wide choice: unless explicitly overridden,
+        # carry forward whatever sibling benches use (default True).
+        admin_tls = self.admin_tls if self.admin_tls is not None else self._sibling_admin_tls()
         settings = {
             "admin_password": secrets.token_hex(nbytes=5),
             "admin_domain": self.admin_domain or f"{self.name}-admin.localhost",
-            "admin_tls": self.admin_tls,
+            "admin_tls": admin_tls,
         }
         if self.process_manager:
             settings["production_process_manager"] = self.process_manager
@@ -115,6 +121,13 @@ class NewCommand(Command):
             if email:
                 return email
         return ""
+
+    def _sibling_admin_tls(self) -> bool:
+        """Carry forward the server-wide TLS choice from a sibling bench; default
+        to True (terminate TLS) when this is the first bench."""
+        for _, config in iter_sibling_benches(self.target_directory):
+            return bool(getattr(config.admin, "tls", True))
+        return True
 
     def _pick_port_offset(self, bench_path: Path) -> int:
         """Smallest offset (added to every base port) that collides with

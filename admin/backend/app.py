@@ -243,9 +243,11 @@ def create_app(bench_root: Path) -> Flask:
         if normalize_host(admin_domain) == normalize_host(name):
             return jsonify({"error": "Admin domain must differ from the bench/site name."}), 400
 
-        # Default to terminating TLS; the UI may opt out when a central proxy
-        # fronts the admin.
-        admin_tls = bool(data.get("admin_tls", True))
+        # TLS termination is a server-wide setting carried forward from sibling
+        # benches; only override when the caller explicitly provides it.
+        admin_tls = data.get("admin_tls")
+        if admin_tls is not None:
+            admin_tls = bool(admin_tls)
 
         try:
             NewCommand(new_dir, name, process_manager=process_manager,

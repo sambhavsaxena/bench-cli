@@ -25,11 +25,13 @@ def needs_letsencrypt(bench: "Bench") -> bool:
     domain. Requires letsencrypt.email to be configured."""
     if not bench.config.letsencrypt.email:
         return False
+    # admin.tls = False means a central proxy terminates TLS for the whole
+    # bench, so no certs are obtained here at all.
+    if not bench.config.admin.tls:
+        return False
     if any(site.config.ssl and _is_public_domain(site.config.name) for site in bench.sites()):
         return True
-    # The admin needs a cert only when it terminates TLS itself. With
-    # admin.tls = False a central proxy fronts it, so nginx just serves HTTP.
-    return bench.config.admin.tls and _is_public_domain(bench.config.admin.domain)
+    return _is_public_domain(bench.config.admin.domain)
 
 
 class LetsEncryptManager:
@@ -75,10 +77,13 @@ class LetsEncryptManager:
         ])
 
     def obtain_all(self) -> None:
+        # With TLS disabled a central proxy fronts the bench; obtain nothing.
+        if not self.bench.config.admin.tls:
+            return
         for site in self.bench.sites():
             if site.config.ssl and _is_public_domain(site.config.name):
                 self.obtain(site.config)
-        if self.bench.config.admin.tls and _is_public_domain(self.bench.config.admin.domain):
+        if _is_public_domain(self.bench.config.admin.domain):
             self.obtain_admin()
 
     def obtain_admin(self) -> None:

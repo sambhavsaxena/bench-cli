@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { Button, Dialog, ErrorMessage, FormControl, Switch } from 'frappe-ui'
+import { Button, Dialog, ErrorMessage, FormControl } from 'frappe-ui'
 
 const props = defineProps({ modelValue: Boolean })
 const emit = defineEmits(['update:modelValue'])
@@ -13,7 +13,6 @@ const show = computed({
 const name = ref('')
 const processManager = ref('systemd')
 const adminDomain = ref('')
-const handleTls = ref(true)
 const error = ref('')
 const creating = ref(false)
 const status = ref('')
@@ -49,7 +48,6 @@ watch(show, (open) => {
   name.value = ''
   processManager.value = 'systemd'
   adminDomain.value = ''
-  handleTls.value = true
   error.value = ''
   creating.value = false
   status.value = ''
@@ -94,7 +92,7 @@ async function createBench() {
     const response = await fetch('/api/benches/new', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: benchName, process_manager: processManager.value, admin_domain: domain, admin_tls: handleTls.value }),
+      body: JSON.stringify({ name: benchName, process_manager: processManager.value, admin_domain: domain }),
     })
     const data = await response.json()
     if (!response.ok) {
@@ -174,15 +172,6 @@ async function createBench() {
             <p class="mt-1.5 text-xs text-ink-gray-5">
               The web address you'll use to open this bench.
             </p>
-          </div>
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <span class="block text-sm font-medium text-ink-gray-8">Handle HTTPS</span>
-              <span class="block text-xs text-ink-gray-5">
-                Turn off if a central proxy already terminates TLS — this bench then serves plain HTTP.
-              </span>
-            </div>
-            <Switch v-model="handleTls" />
           </div>
           <ErrorMessage v-if="error" :message="error" />
           <p v-if="status" class="text-sm text-ink-gray-6">{{ status }}</p>

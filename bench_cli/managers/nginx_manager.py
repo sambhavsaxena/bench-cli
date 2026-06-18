@@ -33,8 +33,11 @@ class NginxManager:
         nginx_dir = self.bench.config_path / "nginx"
         sites_dir = nginx_dir / "sites"
         sites_dir.mkdir(parents=True, exist_ok=True)
+        # admin.tls = False makes the whole bench HTTP-only: a central proxy
+        # terminates TLS, so neither sites nor the admin serve HTTPS here.
+        tls = self.bench.config.admin.tls
         for site in self.bench.sites():
-            site_ssl_ready = ssl_ready and self.cert_exists(site.config)
+            site_ssl_ready = tls and ssl_ready and self.cert_exists(site.config)
             conf_text = self._generate_site_config(site.config, site_ssl_ready)
             (sites_dir / f"{site.config.name}.conf").write_text(conf_text)
         # The admin is always reached via its (mandatory) domain in production;

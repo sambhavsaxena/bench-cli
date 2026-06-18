@@ -112,6 +112,26 @@ def test_admin_domain_proxy_under_systemd(tmp_path: Path) -> None:
     assert f"proxy_pass         http://127.0.0.1:{bench.config.admin.internal_port};" in content
 
 
+def test_admin_tls_disabled_serves_sites_http_only(tmp_path: Path) -> None:
+    # admin.tls = False is bench-wide: even an SSL site with a cert on disk is
+    # served plain-HTTP, because a central proxy terminates TLS upstream.
+    data = copy.deepcopy(_SSL_DATA)
+    data["admin"] = {"domain": "admin.example.com", "tls": False}
+    bench = _make_bench(tmp_path, data)
+    bench.create_directories()
+    (tmp_path / "sites" / "site1.example.com").mkdir(parents=True)
+    (tmp_path / "sites" / "site1.example.com" / "site_config.json").write_text('{"ssl": true}')
+
+    manager = NginxManager(bench)
+    manager.cert_exists = lambda site: True  # pretend a cert is present
+    manager.generate_config(ssl_ready=True)
+
+    content = (tmp_path / "config" / "nginx" / "sites" / "site1.example.com.conf").read_text()
+    assert "listen 80" in content
+    assert "ssl_certificate" not in content
+    assert "return 301 https://" not in content
+
+
 def test_admin_tls_disabled_serves_plain_http(tmp_path: Path) -> None:
     # With admin.tls = False a central proxy terminates TLS; nginx must serve the
     # admin over plain HTTP on :80 and never redirect to HTTPS.
