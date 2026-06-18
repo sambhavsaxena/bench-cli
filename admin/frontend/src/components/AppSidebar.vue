@@ -46,13 +46,24 @@ async function loadBenches() {
   } catch { }
 }
 
-// Opened from the sidebar header dropdown (reka-ui Menu). The menu applies
-// inert/pointer-events:none to the rest of the page while open and only
-// releases it after it finishes closing — if we mount a Dialog in the same
-// tick, its subtree inherits that inert state and becomes unclickable. Defer
-// the open until the menu has torn down.
+// Opened from the sidebar header dropdown (reka-ui Menu). While open, the menu
+// sets `pointer-events: none` on <body> and only restores it after its close
+// transition finishes. Opening a (portaled) Dialog before then leaves the whole
+// dialog — text boxes included — unclickable. Wait until the body is interactive
+// again (with a frame-count fallback so we never hang), then clear any lingering
+// lock before mounting the dialog.
 function openAfterMenuCloses(fn) {
-  nextTick(() => requestAnimationFrame(fn))
+  let tries = 0
+  const tick = () => {
+    const locked = getComputedStyle(document.body).pointerEvents === 'none'
+    if (!locked || tries++ > 30) {
+      document.body.style.pointerEvents = ''
+      fn()
+    } else {
+      requestAnimationFrame(tick)
+    }
+  }
+  nextTick(() => requestAnimationFrame(tick))
 }
 
 function openBenchDialog() {
@@ -240,7 +251,7 @@ onUnmounted(() => clearInterval(pollTimer))
       <template #footer-items />
     </Sidebar>
 
-    <Dialog v-model="showBenchDialog" title="Change Bench" size="sm" :showCloseButton="true">
+    <Dialog v-model="showBenchDialog" title="Change Bench" size="lg" :showCloseButton="true">
       <template #default>
         <div v-if="benches.length === 0" class="rounded-lg bg-surface-gray-1 px-3 py-6 text-center text-sm text-ink-gray-5">
           No other benches running.
@@ -267,7 +278,7 @@ onUnmounted(() => clearInterval(pollTimer))
       </template>
     </Dialog>
 
-    <Dialog v-model="showNewBenchDialog" title="New Bench" size="sm" :showCloseButton="true">
+    <Dialog v-model="showNewBenchDialog" title="New Bench" size="lg" :showCloseButton="true">
       <template #default>
         <div class="flex flex-col gap-5">
           <FormControl
