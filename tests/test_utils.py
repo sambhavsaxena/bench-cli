@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from bench_cli.utils import host_owner, write_toml
+from bench_cli.utils import host_owner, normalize_host, write_toml
 
 
 def _make_bench(benches: Path, name: str, *, admin_domain: str, sites: list[str] | None = None) -> Path:
@@ -49,6 +49,26 @@ def test_host_owner_ignores_self(tmp_path: Path) -> None:
     bench = _make_bench(benches, "alpha", admin_domain="alpha-admin.localhost", sites=["shop.localhost"])
     # Scanning from alpha itself must not report alpha as the owner.
     assert host_owner(bench, "shop.localhost") is None
+
+
+def test_host_owner_normalizes_case_and_trailing_dot(tmp_path: Path) -> None:
+    benches = tmp_path / "benches"
+    _make_bench(benches, "alpha", admin_domain="Admin.Example.COM")
+    assert host_owner(benches / "beta", "admin.example.com.") == "alpha"
+
+
+def test_host_owner_detects_site_alias(tmp_path: Path) -> None:
+    benches = tmp_path / "benches"
+    bench = _make_bench(benches, "alpha", admin_domain="alpha-admin.localhost", sites=["shop.localhost"])
+    site_cfg = bench / "sites" / "shop.localhost" / "site_config.json"
+    site_cfg.write_text('{"domains": ["www.shop.example.com"]}')
+    assert host_owner(benches / "beta", "www.shop.example.com") == "alpha"
+
+
+def test_normalize_host() -> None:
+    assert normalize_host("Admin.Example.COM.") == "admin.example.com"
+    assert normalize_host("") == ""
+    assert normalize_host("  Foo.Local  ") == "foo.local"
 
 
 def _roundtrip(tmp_path: Path, data: dict) -> dict:

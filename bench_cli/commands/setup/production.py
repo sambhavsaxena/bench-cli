@@ -51,12 +51,21 @@ class SetupProductionCommand(Command):
         """Admin is reached only via its domain in production. Use whatever is in
         bench.toml (validate() enforces it is present); just reject a domain that
         another bench already claims."""
+        from bench_cli.utils import normalize_host
+
         domain = self.bench.config.admin.domain
         if not domain:
             return  # validate() raises the required-in-prod error, naming the bench
         owner = host_owner(self.bench.path, domain)
         if owner:
             raise BenchError(f"Admin domain '{domain}' is already used by bench '{owner}'.")
+        target = normalize_host(domain)
+        for site in self.bench.sites():
+            if normalize_host(site.config.name) == target:
+                raise BenchError(
+                    f"Admin domain '{domain}' conflicts with this bench's own site '{site.config.name}'. "
+                    f"An admin domain must not match a site domain."
+                )
 
     def _persist(self, updates: dict) -> None:
         """Merge ``updates`` into bench.toml in place, preserving all other fields."""
