@@ -93,6 +93,10 @@ class ProcessManager:
         result = subprocess.run(["pgrep", "-f", pattern], capture_output=True)
         return bool(result.stdout.strip())
 
+    def admin_is_running(self) -> bool:
+        # In development the admin is part of the foreground Procfile runner.
+        return self.is_running()
+
     def reload_web(self) -> None:
         pass
 

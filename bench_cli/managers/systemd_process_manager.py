@@ -188,6 +188,21 @@ class SystemdProcessManager(ProcessManager):
         except FileNotFoundError:
             return False
 
+    def admin_is_running(self) -> bool:
+        """Admin is reachable if its socket is listening or the service is active
+        (socket-activated, so a listening socket counts)."""
+        env = self._systemctl_env()
+        for unit in (self._admin_socket_name(), self._unit_name("admin")):
+            try:
+                result = subprocess.run(
+                    self._systemctl("is-active", unit), capture_output=True, env=env
+                )
+            except FileNotFoundError:
+                return False
+            if result.returncode == 0:
+                return True
+        return False
+
     def reload_web(self) -> None:
         cache_port = self.bench.config.redis.cache_port
         subprocess.run(
