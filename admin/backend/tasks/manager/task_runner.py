@@ -28,6 +28,7 @@ _WHITELIST: dict[str, list[str]] = {
     "delete-backup": ["site", "filenames"],
     "build": [],  # optional: app
     "update": [],
+    "get-and-install-app": ["site", "app", "repo"],
     "switch-branch": ["name", "branch"],
     "setup-nginx": [],
     "setup-production": [],
@@ -151,6 +152,11 @@ class TaskRunner:
             return [sys.executable, "-m", "admin.backend.tasks.jobs.delete_backup_task", str(self._bench_root), args["site"], *args["filenames"]]
         if command == "install-app":
             return [sys.executable, "-m", "admin.backend.tasks.jobs.install_app_task", str(self._bench_root), args["site"], args["app"]]
+        if command == "get-and-install-app":
+            argv = [sys.executable, "-m", "admin.backend.tasks.jobs.get_and_install_app_task", str(self._bench_root), args["site"], args["app"], args["repo"]]
+            if args.get("branch"):
+                argv += ["--branch", args["branch"]]
+            return argv
         if command == "switch-branch":
             return [sys.executable, "-m", "admin.backend.tasks.jobs.switch_branch_task", str(self._bench_root), args["name"], args["branch"]]
         if command == "setup-nginx":
