@@ -128,15 +128,10 @@ async function createBench() {
              managed bench the host probably can't run. -->
         <div v-if="isProduction === false" class="flex flex-col gap-3">
           <p class="text-sm text-ink-gray-7">
-            This bench is running in development mode, so new benches are best
-            created from the command line where you control how they run:
+            This bench is running in development mode, so new benches can be
+            created from the command line :
           </p>
           <pre class="rounded-lg bg-surface-gray-2 px-3 py-2.5 text-sm text-ink-gray-8 select-all">bench new my-bench</pre>
-          <p class="text-xs text-ink-gray-5">
-            Then <span class="font-medium">cd</span> into it and run
-            <span class="font-medium">bench start</span> to develop, or
-            <span class="font-medium">bench setup production</span> to make it live.
-          </p>
         </div>
 
         <!-- Production bench: a process manager is configured, so we create the
