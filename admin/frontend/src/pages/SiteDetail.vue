@@ -18,6 +18,7 @@ const siteName = route.params.name
 const site = ref(null)
 const httpPort = ref(8000)
 const nginxEnabled = ref(false)
+const adminTls = ref(false)
 const installable = ref([])
 const registry = ref([])
 const loading = ref(true)
@@ -492,6 +493,7 @@ async function load() {
     site.value = d.site
     httpPort.value = d.http_port ?? 8000
     nginxEnabled.value = d.nginx_enabled ?? false
+    adminTls.value = d.admin_tls ?? false
     installable.value = d.installable_apps
   } catch (e) {
     error.value = e.message
@@ -791,8 +793,10 @@ onMounted(() => { load(); loadRegistry() })
                 </Button>
               </div>
 
-              <!-- Enable SSL -->
-              <div class="flex items-center justify-between gap-4 px-4 py-3.5">
+              <!-- Enable SSL — only relevant when the bench terminates TLS
+                   (admin.tls). With TLS off, a central proxy fronts the bench
+                   and per-site SSL is a no-op, so hide it entirely. -->
+              <div v-if="adminTls" class="flex items-center justify-between gap-4 px-4 py-3.5">
                 <div>
                   <p class="text-sm font-medium text-ink-gray-8">Enable SSL</p>
                   <p class="mt-0.5 text-sm text-ink-gray-5">

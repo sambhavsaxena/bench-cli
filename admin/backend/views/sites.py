@@ -60,14 +60,16 @@ def detail(name: str):
         bench_config = BenchConfig.from_file(bench_root / "bench.toml")
         http_port = bench_config.http_port
         nginx_enabled = bench_config.production.enabled
+        admin_tls = bench_config.admin.tls
     except Exception:
         http_port = 8000
         nginx_enabled = False
+        admin_tls = False
 
     site_dict = asdict(site)
     site_dict["site_config"] = _public_config(site.site_config)
     site_dict["ssl"] = bool(site.site_config.get("ssl"))
-    return jsonify({"site": site_dict, "installable_apps": installable, "http_port": http_port, "nginx_enabled": nginx_enabled})
+    return jsonify({"site": site_dict, "installable_apps": installable, "http_port": http_port, "nginx_enabled": nginx_enabled, "admin_tls": admin_tls})
 
 
 @sites_bp.route("/create", methods=["POST"])
