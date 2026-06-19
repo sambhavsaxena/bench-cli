@@ -21,12 +21,9 @@ const dbWillInstall = computed(() => {
   if (isLinux.value && form.value.dedicated_db === 'dedicated') return dedicatedWillInstall.value
   return sharedWillInstall.value
 })
-const dbPasswordDescription = computed(() => {
-  if (!dbWillInstall.value) return undefined
-  if (isLinux.value && form.value.dedicated_db === 'dedicated')
-    return 'A new MariaDB instance will be created and its root password set to this value.'
-  return 'MariaDB will be installed and its root password set to this value.'
-})
+const dbPasswordDescription = computed(() =>
+  dbWillInstall.value ? 'MariaDB will be installed and its root password set to this value.' : undefined
+)
 
 // ── init-task streaming state ─────────────────────────────────────────────
 const taskLines = ref([])
@@ -477,11 +474,9 @@ function backToConfig() {
             ]"
           />
           <FormControl
-            v-if="!isLinux || form.dedicated_db === 'shared'"
-            label="MariaDB root user"
+            v-if="(!isLinux || form.dedicated_db === 'shared') && !dbWillInstall"
+            label="MariaDB admin user"
             v-model="form.mariadb_admin_user"
-            :disabled="dbWillInstall"
-            :description="dbWillInstall ? 'A fresh MariaDB install only has the \'root\' superuser.' : undefined"
           />
           <Password
             label="MariaDB root password"
