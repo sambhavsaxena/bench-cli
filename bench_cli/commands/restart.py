@@ -9,8 +9,11 @@ if TYPE_CHECKING:
     from bench_cli.managers.supervisor_process_manager import SupervisorProcessManager
     from bench_cli.managers.systemd_process_manager import SystemdProcessManager
 
-_DEV_MESSAGE = "Restart is available only for production benches managed by\nsystemd or Supervisor.\n\nFor development, stop the runner and execute `bench start` again."
-
+_DEV_MESSAGE = (
+    "Restart is available only for production benches managed by\n"
+    "systemd or Supervisor.\n\n"
+    "For development, stop the runner and execute `bench start` again."
+)
 
 class RestartCommand(Command):
     name = "restart"
