@@ -6,13 +6,14 @@ from bench_cli.commands.base import Command
 
 if TYPE_CHECKING:
     from bench_cli.core.bench import Bench
+    from bench_cli.managers.supervisor_process_manager import SupervisorProcessManager
+    from bench_cli.managers.systemd_process_manager import SystemdProcessManager
 
 _DEV_MESSAGE = (
     "Restart is available only for production benches managed by\n"
     "systemd or Supervisor.\n\n"
     "For development, stop the runner and execute `bench start` again."
 )
-
 
 class RestartCommand(Command):
     name = "restart"
@@ -28,7 +29,7 @@ class RestartCommand(Command):
 
         from bench_cli.managers.process_manager import ProcessManagerFactory
 
-        manager = ProcessManagerFactory.create(self.bench)
+        manager: SystemdProcessManager | SupervisorProcessManager = ProcessManagerFactory.create(self.bench)
         if not manager.is_configured():
             print(_incomplete_message(self.bench))
             return
