@@ -1,8 +1,7 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { Button, FormControl, FormLabel, Password, Slider, ErrorMessage, Progress, FeatherIcon } from 'frappe-ui'
-import TerminalOutput from '../components/TerminalOutput.vue'
-import { processLine } from '../utils/ansi.js'
+import TaskStream from '../components/TaskStream.vue'
 
 const emit = defineEmits(['done'])
 
@@ -26,9 +25,12 @@ const dbPasswordDescription = computed(() =>
 )
 
 // ── init-task streaming state ─────────────────────────────────────────────
-const taskLines = ref([])
-const taskStreaming = ref(false)
-const terminal = ref(null)
+// TaskStream owns the SSE connection; we drive it via streamUrl and read its
+// `[N/M]` lines for the progress bar. streamPhase routes the shared "done" event
+// to the right handler across the init → production sequence.
+const taskStream = ref(null)
+const streamUrl = ref('')
+const streamPhase = ref('init')  // 'init' | 'production'
 const progress = ref(0)
 const currentStep = ref('Starting…')
 const showDetails = ref(false)
@@ -188,11 +190,7 @@ const subtitles = {
 const title = computed(() => titles[step.value] || benchName.value)
 const subtitle = computed(() => subtitles[step.value] || null)
 
-onMounted(() => {
-  loadConfig()
-  document.addEventListener('visibilitychange', onVisibilityChange)
-})
-onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibilityChange))
+onMounted(loadConfig)
 
 async function loadConfig() {
   try {
@@ -212,7 +210,7 @@ async function loadConfig() {
     }
     if (data.running_init_task_id) {
       step.value = 'running'
-      streamTask(`/api/setup/stream/${data.running_init_task_id}`, onInitDone)
+      beginStream('init', data.running_init_task_id)
     }
   } catch {}
   fetchBranches()
@@ -252,44 +250,18 @@ function updateProgress(raw) {
   currentStep.value = label
 }
 
-function scrollTerminal() {
-  // Skip while the tab is hidden: scrolling against un-painted background-tab
-  // layout is what made the terminal jump to a blank area on return.
-  if (!document.hidden) terminal.value?.scrollToBottom()
-}
-
-function onVisibilityChange() {
-  if (!document.hidden) terminal.value?.scrollToBottom()
-}
-
-function streamTask(url, onDone) {
-  taskLines.value = []
-  taskStreaming.value = true
+// Point TaskStream at a task's output. Changing streamUrl makes the component
+// (re)connect and reset its output; we reset our own progress alongside it.
+function beginStream(phase, taskId) {
+  streamPhase.value = phase
   progress.value = 0
   currentStep.value = 'Starting…'
-  let volatile = false // last line is an uncommitted \r progress preview
-  const source = new EventSource(url)
-  source.onmessage = (e) => {
-    if (volatile) { taskLines.value.pop(); volatile = false }
-    taskLines.value.push(processLine(e.data))
-    updateProgress(e.data)
-    scrollTerminal()
-  }
-  source.addEventListener('overwrite', (e) => {
-    if (volatile) taskLines.value[taskLines.value.length - 1] = processLine(e.data)
-    else { taskLines.value.push(processLine(e.data)); volatile = true }
-    scrollTerminal()
-  })
-  source.addEventListener('done', (e) => {
-    taskStreaming.value = false
-    source.close()
-    onDone(parseInt(e.data) === 0)
-  })
-  source.onerror = () => {
-    taskStreaming.value = false
-    source.close()
-    failWith('Lost connection to the setup process.')
-  }
+  streamUrl.value = `/api/setup/stream/${taskId}`
+}
+
+function onStreamDone(success) {
+  if (streamPhase.value === 'production') onProductionDone(success)
+  else onInitDone(success)
 }
 
 function failWith(message) {
@@ -299,7 +271,7 @@ function failWith(message) {
 
 function toggleDetails() {
   showDetails.value = !showDetails.value
-  if (showDetails.value) scrollTerminal()
+  if (showDetails.value) taskStream.value?.scrollToBottom()
 }
 
 // ── navigation ─────────────────────────────────────────────────────────────
@@ -397,7 +369,7 @@ async function initialize() {
     const data = await postJson('/api/setup/init', {})
     if (!data.ok) throw new Error(data.error || 'Failed to start setup.')
     step.value = 'running'
-    streamTask(`/api/setup/stream/${data.task_id}`, onInitDone)
+    beginStream('init', data.task_id)
   } catch (e) {
     error.value = e.message
   } finally {
@@ -424,15 +396,16 @@ async function deployProduction() {
   try {
     const data = await postJson('/api/setup/setup-production', {})
     if (!data.ok) throw new Error(data.error || 'Failed to start production setup.')
-    streamTask(`/api/setup/stream/${data.task_id}`, onProductionDone)
+    beginStream('production', data.task_id)
   } catch (e) {
-    error.value = e.message
+    // step is already 'running' with init output on screen — surface it.
+    failWith(e.message)
   }
 }
 
 function onProductionDone(success) {
   if (!success) {
-    error.value = 'Production setup failed. Check the output above and try again.'
+    failWith('Production setup failed. Check the output above and try again.')
     return
   }
   progress.value = 100
@@ -622,7 +595,19 @@ function backToConfig() {
             <FeatherIcon :name="showDetails ? 'chevron-down' : 'chevron-right'" class="h-4 w-4" />
             {{ showDetails ? 'Hide details' : 'Show details' }}
           </button>
-          <TerminalOutput v-if="showDetails" ref="terminal" :lines="taskLines" :streaming="taskStreaming" />
+          <!-- v-show on the wrapper, not <TaskStream>: the component's root is a
+               slot (fragment), which v-show can't toggle. Keeping it mounted while
+               hidden lets streaming continue in the background. -->
+          <div v-show="showDetails">
+            <TaskStream
+              ref="taskStream"
+              :url="streamUrl"
+              :guard-hidden-tab="true"
+              @line="updateProgress"
+              @done="onStreamDone"
+              @error="failWith('Lost connection to the setup process.')"
+            />
+          </div>
           <ErrorMessage v-if="error" :message="error" />
         </div>
 
