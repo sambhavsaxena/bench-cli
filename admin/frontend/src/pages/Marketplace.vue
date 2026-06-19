@@ -92,13 +92,24 @@ const installApp = ref(null)
 const installBranch = ref('')
 const installing = ref(false)
 const installError = ref('')
+const sites = ref([])
+const sitesLoading = ref(false)
+const selectedSites = ref([])
 
-function openInstall(app) {
+async function openInstall(app) {
   installApp.value = app
   installBranch.value = app.branches?.[0] ?? app.branch ?? ''
   installing.value = false
   installError.value = ''
+  selectedSites.value = []
   showInstall.value = true
+  sitesLoading.value = true
+  try {
+    const res = await fetch('/api/sites/')
+    const all = await res.json()
+    sites.value = all.filter(s => s.exists && !s.broken)
+  } catch { sites.value = [] }
+  finally { sitesLoading.value = false }
 }
 
 async function doInstall() {
@@ -106,15 +117,29 @@ async function doInstall() {
   installing.value = true
   installError.value = ''
   try {
-    const res = await fetch('/api/apps/add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: installApp.value.name,
-        repo: installApp.value.repo,
-        branch: installBranch.value,
-      }),
-    })
+    let res
+    if (selectedSites.value.length) {
+      res = await fetch('/api/apps/add-and-install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: installApp.value.name,
+          repo: installApp.value.repo,
+          branch: installBranch.value,
+          sites: selectedSites.value,
+        }),
+      })
+    } else {
+      res = await fetch('/api/apps/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: installApp.value.name,
+          repo: installApp.value.repo,
+          branch: installBranch.value,
+        }),
+      })
+    }
     const d = await res.json()
     if (d.ok) { showInstall.value = false; router.push(`/tasks/${d.task_id}`) }
     else installError.value = d.error
@@ -160,23 +185,25 @@ onMounted(load)
       <ErrorMessage v-else-if="error" :message="error" />
 
       <template v-else>
-        <template v-for="(app, i) in filteredRegistry" :key="app.name">
+        <template v-for="(app, i) in filteredRegistry">
           <!-- Section labels (only shown when both frappe + community apps are present) -->
           <p
             v-if="hasMixedGroups && i === 0 && isFrappe(app)"
+            :key="`lbl-frappe-${app.name}`"
             class="text-xs font-medium uppercase tracking-wide text-ink-gray-4 mt-1 mb-0.5"
           >
             From Frappe
           </p>
           <p
             v-if="hasMixedGroups && !isFrappe(app) && (i === 0 || isFrappe(filteredRegistry[i - 1]))"
+            :key="`lbl-community-${app.name}`"
             class="text-xs font-medium uppercase tracking-wide text-ink-gray-4 mt-2 mb-0.5"
           >
             Community
           </p>
 
           <!-- App card -->
-          <div class="flex items-start gap-4 rounded-lg border border-outline-gray-1 bg-surface-white px-4 py-3 shadow-sm">
+          <div :key="app.name" class="flex items-start gap-4 rounded-lg border border-outline-gray-1 bg-surface-white px-4 py-3 shadow-sm">
             <!-- Logo -->
             <div
               class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden"
@@ -232,6 +259,24 @@ onMounted(load)
             :options="branchOptions"
           />
           <p v-else class="text-sm text-ink-gray-6">Branch: <span class="font-medium text-ink-gray-9">{{ installBranch }}</span></p>
+
+          <!-- Site selection -->
+          <div class="flex flex-col gap-2">
+            <p class="text-sm font-medium text-ink-gray-7">Also install on sites</p>
+            <LoadingText v-if="sitesLoading" />
+            <p v-else-if="!sites.length" class="text-sm text-ink-gray-4">No sites available.</p>
+            <div v-else class="flex flex-col gap-1.5">
+              <label
+                v-for="s in sites"
+                :key="s.name"
+                class="flex cursor-pointer items-center gap-2.5 rounded px-1 py-1 hover:bg-surface-gray-1"
+              >
+                <input type="checkbox" :value="s.name" v-model="selectedSites" class="h-3.5 w-3.5 rounded accent-ink-gray-9" />
+                <span class="text-sm text-ink-gray-8">{{ s.name }}</span>
+              </label>
+            </div>
+          </div>
+
           <ErrorMessage v-if="installError" :message="installError" />
           <div class="flex justify-end gap-2">
             <Button variant="ghost" @click="showInstall = false">Cancel</Button>
