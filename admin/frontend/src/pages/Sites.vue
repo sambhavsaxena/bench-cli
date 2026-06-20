@@ -3,8 +3,10 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import { Button, Dialog, FormControl, LoadingText, ErrorMessage, Switch, TabButtons } from 'frappe-ui'
 import FilePickerField from '../components/FilePickerField.vue'
+import { useTaskProgress } from '../composables/useTaskProgress.js'
 
 const router = useRouter()
+const { watchTask } = useTaskProgress()
 const sites = ref([])
 const loading = ref(true)
 const error = ref('')
@@ -123,7 +125,7 @@ async function createSite() {
       res = await fetch('/api/sites/create-from-upload', { method: 'POST', body: fd })
     }
     const d = await res.json()
-    if (d.ok) { showCreate.value = false; router.push(`/tasks/${d.task_id}`) }
+    if (d.ok) { showCreate.value = false; watchTask(d.task_id) }
     else createError.value = d.error
   } catch (e) {
     createError.value = e.message
@@ -160,7 +162,7 @@ async function runUpdate() {
       body: JSON.stringify({ command: 'update' }),
     })
     const d = await res.json()
-    if (d.ok) router.push(`/tasks/${d.task_id}`)
+    if (d.ok) watchTask(d.task_id)
     else updateError.value = d.error
   } catch (e) {
     updateError.value = e.message

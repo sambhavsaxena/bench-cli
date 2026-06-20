@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button, Badge, Dialog, Dropdown, FormControl, ListView, LoadingText, ErrorMessage, Tabs, TextInput } from 'frappe-ui'
+import { useTaskProgress } from '../composables/useTaskProgress.js'
 import LucideDatabase from '~icons/lucide/database'
 import LucideServer from '~icons/lucide/server'
 import LucideMoreVertical from '~icons/lucide/more-vertical'
@@ -14,6 +15,7 @@ import LucidePlus from '~icons/lucide/plus'
 const route = useRoute()
 const router = useRouter()
 const siteName = route.params.name
+const { watchTask } = useTaskProgress()
 
 const site = ref(null)
 const httpPort = ref(8000)
@@ -109,7 +111,7 @@ async function enableSsl(email) {
     const d = await res.json()
     if (d.ok) {
       showSslEmail.value = false
-      router.push(`/tasks/${d.task_id}`)
+      watchTask(d.task_id)
     } else if (d.needs_email) {
       // No Let's Encrypt email on file yet — prompt for one, then retry.
       showSslEmail.value = true
@@ -363,7 +365,7 @@ async function deleteBackupSet() {
       body: JSON.stringify({ command: 'delete-backup', site: siteName, filenames }),
     })
     const d = await res.json()
-    if (d.ok) { showDeleteBackup.value = false; router.push(`/tasks/${d.task_id}`) }
+    if (d.ok) { showDeleteBackup.value = false; watchTask(d.task_id) }
     else deleteBackupError.value = d.error
   } catch (e) {
     deleteBackupError.value = e.message
@@ -559,7 +561,7 @@ async function doAction(path, body = {}) {
       body: JSON.stringify(body),
     })
     const d = await res.json()
-    if (d.ok) router.push(`/tasks/${d.task_id}`)
+    if (d.ok) watchTask(d.task_id)
     else actionError.value = d.error
   } catch (e) {
     actionError.value = e.message
@@ -605,7 +607,7 @@ async function confirmInstall() {
       })
     }
     const d = await res.json()
-    if (d.ok) { showInstall.value = false; router.push(`/tasks/${d.task_id}`) }
+    if (d.ok) { showInstall.value = false; watchTask(d.task_id) }
     else installError.value = d.error
   } catch (e) {
     installError.value = e.message
@@ -624,7 +626,7 @@ async function installBenchApp(appName) {
       body: JSON.stringify({ app: appName }),
     })
     const d = await res.json()
-    if (d.ok) { showInstall.value = false; router.push(`/tasks/${d.task_id}`) }
+    if (d.ok) { showInstall.value = false; watchTask(d.task_id) }
     else installError.value = d.error
   } catch (e) {
     installError.value = e.message
