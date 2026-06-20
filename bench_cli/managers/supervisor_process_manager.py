@@ -33,6 +33,7 @@ class SupervisorProcessManager(ProcessManager):
 
     def generate_config(self) -> None:
         AdminEnvManager(_cli_root()).ensure()
+        self._ensure_redis_config()
         self._ensure_gunicorn_config()
         self.supervisor_dir.mkdir(parents=True, exist_ok=True)
         self.supervisor_conf_path.write_text(self._render_supervisord_conf())

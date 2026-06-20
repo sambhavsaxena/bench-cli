@@ -84,12 +84,22 @@ class ProcessManager:
 
     def generate_config(self) -> None:
         AdminEnvManager(_cli_root()).ensure()
+        self._ensure_redis_config()
         self._ensure_gunicorn_config()
         lines = [f"{pd.name}: {pd.command}\n" for pd in self._process_definitions()]
         self.procfile_path.write_text("".join(lines))
 
     def _ensure_gunicorn_config(self) -> None:
         GunicornManager(self.bench).generate_config()
+
+    def _ensure_redis_config(self) -> None:
+        # The generated process config (Procfile/supervisor/systemd) runs
+        # redis-server against config/redis_{cache,queue}.conf. Regenerate them
+        # here so an upgrade that changes the redis config layout self-heals on
+        # the next start, rather than failing with a missing config file.
+        from bench_cli.managers.redis_manager import RedisManager
+
+        RedisManager(self.bench.config.redis, self.bench).generate_configs()
 
     # ── Lifecycle ───────────────────────────────────────────────────────────
 
