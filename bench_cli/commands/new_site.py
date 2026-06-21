@@ -141,7 +141,28 @@ class NewSiteCommand(Command):
         mgr = NginxManager(self.bench)
         if not mgr.is_installed():
             return
+
+        if self._should_obtain_ssl():
+            print("TLS is configured and the site has a public domain — obtaining certificate...")
+            sys.stdout.flush()
+            self._write_ssl_flag()
+            from bench_cli.commands.setup.letsencrypt import SetupLetsEncryptCommand
+            SetupLetsEncryptCommand(self.bench).run()
+            return
+
         print("Updating nginx configuration...")
         sys.stdout.flush()
         mgr.generate_config(ssl_ready=True)
         mgr.reload()
+
+    def _should_obtain_ssl(self) -> bool:
+        from bench_cli.managers.letsencrypt_manager import _is_public_domain
+        cfg = self.bench.config
+        return bool(cfg.letsencrypt.email and cfg.admin.tls and _is_public_domain(self.name))
+
+    def _write_ssl_flag(self) -> None:
+        import json
+        config_path = self.bench.sites_path / self.name / "site_config.json"
+        current = json.loads(config_path.read_text()) if config_path.exists() else {}
+        current["ssl"] = True
+        config_path.write_text(json.dumps(current, indent=1))
