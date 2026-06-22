@@ -67,10 +67,10 @@ const stepSections = computed(() => {
     let status
     if (next) {
       status = 'done'
-    } else if (!streaming.value && task.value?.status === 'failed') {
-      status = 'failed'
-    } else if (!streaming.value) {
+    } else if (task.value?.status === 'success') {
       status = 'done'
+    } else if (task.value?.status === 'failed' || task.value?.status === 'killed') {
+      status = 'failed'
     } else {
       status = 'running'
     }

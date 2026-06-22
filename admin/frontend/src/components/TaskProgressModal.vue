@@ -31,8 +31,8 @@ const stepSections = computed(() => {
     const endedAt = next ? next.ts : null
     let status
     if (next) status = 'done'
-    else if (!streaming.value && task.value?.status === 'failed') status = 'failed'
-    else if (!streaming.value) status = 'done'
+    else if (task.value?.status === 'success') status = 'done'
+    else if (task.value?.status === 'failed' || task.value?.status === 'killed') status = 'failed'
     else status = 'running'
     sections.push({ key: m.key, label: m.label, startedAt: m.ts, endedAt, status })
   }
